@@ -1,0 +1,15 @@
+.dfx/*
+!.dfx/local
+.dfx/local/*
+!.dfx/local/canisters
+.dfx/local/canisters/*
+!.dfx/local/canisters/nft
+.dfx/local/canisters/nft/*
+!.dfx/local/canister_ids.json
+!.dfx/local/canisters/nft/*.did.*
+!.dfx/local/canisters/nft/index.js
+.DS_Store
+.vessel
+dist
+node_modules
+Icon?

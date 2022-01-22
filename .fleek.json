@@ -1,0 +1,10 @@
+{
+    "build": {
+        "baseDir": "frontend",
+        "command": "npm ci && npm run build",
+        "environment": {
+            "DFX_NETWORK": "ic"
+        },
+        "publicDir": "dist"
+    }
+}

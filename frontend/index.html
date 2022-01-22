@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title>Creator NFTs</title>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+        <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+
+        <link rel="stylesheet" type="text/css" href="/index.css" />
+
+        <script src="/global-shims.js"></script>
+        <script type="module" src="/src/ui/elements/root-app.element.ts"></script>
+
+        <!-- favicon stuffs generated from https://realfavicongenerator.net -->
+        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+        <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+        <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+        <link rel="manifest" href="/site.webmanifest" />
+        <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#009ceb" />
+        <meta name="msapplication-TileColor" content="#2d89ef" />
+        <meta name="theme-color" content="#ffffff" />
+
+        <!-- inlined style rather than loaded stylesheet so it's as fast as possible -->
+        <style>
+            .load-default {
+                font-family: var(--tcnft-theme-default-font-family);
+            }
+
+            .load-monospace {
+                font-family: var(--tcnft-theme-monospace-font-family);
+            }
+
+            .load-symbol {
+                font-family: var(--tcnft-theme-symbol-font-family);
+            }
+
+            .font-preloading {
+                /*
+                    Can't use display:none cause the browser is smart enough to not load the font in
+                    that case.
+                */
+                position: absolute;
+                opacity: 0;
+                z-index: -999;
+                overflow: hidden;
+                height: 0;
+                margin: 0;
+                padding: 0;
+                width: 0;
+                pointer-events: none;
+            }
+        </style>
+    </head>
+
+    <body>
+        <!-- try to load the fonts before the web component JS loads (this usually works) -->
+        <p class="font-preloading">
+            <span class="load-default"></span>
+            <span class="load-monospace"></span>
+            <span class="load-symbol"></span>
+        </p>
+        <tcnft-root-app></tcnft-root-app>
+    </body>
+</html>

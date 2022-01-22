@@ -1,0 +1,28 @@
+{
+    "name": "creator-nfts-root",
+    "version": "0.0.0",
+    "private": true,
+    "homepage": "https://github.com/Toniq-Labs/creator-nfts",
+    "bugs": {
+        "url": "https://github.com/Toniq-Labs/creator-nfts/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/Toniq-Labs/creator-nfts"
+    },
+    "scripts": {
+        "build": "cd frontend && npm run build",
+        "dev:reset": "./scripts/reset-canisters.sh",
+        "format": "virmator format --no-write-config",
+        "spellcheck": "virmator spellcheck --no-write-config",
+        "start": "./scripts/startup.sh",
+        "test": "cd frontend && npm test",
+        "test:full": "bash ./scripts/run-tests.sh"
+    },
+    "dependencies": {
+        "@dfinity/agent": "^0.10.2"
+    },
+    "devDependencies": {
+        "virmator": "^1.3.7"
+    }
+}

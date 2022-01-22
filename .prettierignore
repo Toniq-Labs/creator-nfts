@@ -1,0 +1,6 @@
+.dfx/
+.vessel/
+dist/
+frontend/dfx-link/
+node_modules/
+package-lock.json

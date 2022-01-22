@@ -1,0 +1,103 @@
+@import url('/fonts/lexend-definitions.css');
+@import url('/fonts/inconsolata-definitions.css');
+@import url('/fonts/m-plus-1p-definitions.css');
+
+html,
+body {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    position: fixed;
+    inset: 0;
+}
+
+body {
+    /*
+        This colors the over-scroll or rubber-banding background in Chrome.
+        
+        This will get set in the web components.
+    */
+    background-color: var(--tcnft-theme-body-over-scroll-background-color, white);
+}
+
+/*
+    This colors the over-scroll or rubber-banding background on Safari.
+*/
+body::after {
+    content: '';
+    /*
+        This position: fixed is unfortunate but required to prevent Safari from adding secret
+        scrollbar margins that can't be detected or mitigated in any other way while still allowing
+        scrolling.
+        Adapted from https://stackoverflow.com/a/29319920
+    */
+    position: fixed;
+    top: -50%;
+    right: -50%;
+    bottom: -50%;
+    left: -50%;
+    z-index: -1;
+    background-color: var(--tcnft-theme-body-over-scroll-background-color, white);
+}
+
+html {
+    /*
+        Fonts
+    */
+    --tcnft-theme-default-font-family: 'Lexend', sans-serif;
+    --tcnft-theme-monospace-font-family: 'Inconsolata', monospace;
+    --tcnft-theme-symbol-font-family: 'M PLUS 1p', monospace;
+
+    /*
+        Transitions
+    */
+    /* interactions must be quick and responsive */
+    --tcnft-theme-interaction-transition-time: 100ms;
+    /*
+        Effect transition time is initially zero so that we don't get a bunch of effects animating
+        onto the screen on page load. Each root element should include the RootLoader element which
+        will apply the class which enables effect transition time.
+     */
+    --tcnft-theme-effect-transition-time: 0;
+
+    --tcnft-theme-light-overlay-hover-opacity: 0.1;
+    --tcnft-theme-dark-overlay-hover-opacity: 0.25;
+
+    --tcnft-theme-light-overlay-active-opacity: 0.2;
+    --tcnft-theme-dark-overlay-active-opacity: 0.35;
+
+    --tcnft-theme-light-overlay-covering-opacity: 0.9;
+    --tcnft-theme-dark-overlay-covering-opacity: 0.7;
+
+    /*
+        Colors
+    */
+    --tcnft-theme-light-foreground-color: black;
+    --tcnft-theme-dark-foreground-color: white;
+
+    --tcnft-theme-light-background-color: white;
+    --tcnft-theme-dark-background-color: black;
+
+    --tcnft-theme-light-foreground-primary-accent-color: #009ceb;
+    --tcnft-theme-dark-foreground-primary-accent-color: #eb1400;
+
+    --tcnft-theme-light-foreground-light-accent-color: #67d0f6;
+    --tcnft-theme-dark-foreground-light-accent-color: #be0000;
+
+    --tcnft-theme-light-foreground-dim-color: #ccc;
+    --tcnft-theme-dark-foreground-dim-color: #888;
+
+    /* The accept color is currently the same for each theme */
+    --tcnft-theme-light-accept-color: #00a800;
+    --tcnft-theme-dark-accept-color: #00a800;
+
+    --tcnft-theme-light-error-color: #e58d00;
+    --tcnft-theme-dark-error-color: #ffbf28;
+
+    --tcnft-theme-light-accept-color-highlight: rgba(255, 255, 255, 0);
+    --tcnft-theme-dark-accept-color-highlight: rgba(0, 0, 0, 0);
+
+    --tcnft-theme-light-menu-shadow-color: rgba(0, 0, 0, 0.1);
+    --tcnft-theme-dark-menu-shadow-color: rgba(0, 0, 0, 0.9);
+}
