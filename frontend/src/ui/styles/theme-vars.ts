@@ -5,7 +5,6 @@ export const themeBodyOverScrollColorName = '--tcnft-theme-body-over-scroll-back
 
 export const themeEffectTransitionTimeVar = css`var(--tcnft-theme-effect-transition-time)`;
 export const themeInteractionTransitionTimeVar = css`var(--tcnft-theme-interaction-transition-time)`;
-
 // try to transition the css vars
 export const themeColorTransitions = css`
     transition-duration: ${themeEffectTransitionTimeVar};

@@ -1,14 +1,14 @@
 import {e8sToIcp} from '@frontend/src/augments/number';
 import {standardizeUrl} from '@frontend/src/augments/string';
-import {enableNavigation, preventNavigation} from '@frontend/src/augments/window';
-import {getMintPrice, mintNft} from '@frontend/src/canisters/nft-canister';
+import {getMintPrice, giveSelfNft, mintNft} from '@frontend/src/canisters/nft/minting';
 import {allFlairKeys, FlairKey, getFlairLabelAndUrl} from '@frontend/src/data/flair-images';
 import {NftUser} from '@frontend/src/data/nft-user';
 import {defineCreatorNftElement} from '@frontend/src/ui/define-element/define-creator-nft-element';
-import {CoreInput} from '@frontend/src/ui/elements/design-system/core-input.element';
+import {CoreTextInput} from '@frontend/src/ui/elements/design-system/core-text-input.element';
 import {LoadingIndicator} from '@frontend/src/ui/elements/loading/loading-indicator.element';
-import {CloseModalsEvent} from '@frontend/src/ui/global-events/close-modals';
-import {UpdateNftCountEvent} from '@frontend/src/ui/global-events/update-nft-count';
+import {CloseModalsEvent} from '@frontend/src/ui/global-events/close-modals.event';
+import {UpdateBrowseDataEvent} from '@frontend/src/ui/global-events/update-browse-data.event';
+import {UpdateNftCountEvent} from '@frontend/src/ui/global-events/update-nft-count.event';
 import {TcnftAppFullRoute, TcnftAppSearchParamKeys} from '@frontend/src/ui/routes/app-routes';
 import {
     themeEffectTransitionTimeVar,
@@ -16,15 +16,15 @@ import {
     themeForegroundLightAccentColorVar,
     themeForegroundPrimaryAccentColorVar,
 } from '@frontend/src/ui/styles/theme-vars';
-import {isEnumValue} from 'augment-vir/dist/web-index';
+import {enableNavigation, preventNavigation} from '@frontend/src/ui/window-navigation';
+import {isEnumValue} from 'augment-vir';
 import {ApprovedPrice} from 'dfx-link/local/canisters/nft/nft.did';
 import {assign, css, html, listen} from 'element-vir';
-import {
-    monospaceFontVar,
-    overlayActiveOpacityVar,
-    themeForegroundDimColorVar,
-} from '../../styles/theme-vars';
+import {TemplateResult} from 'lit';
+import {monospaceFontVar} from '../../styles/theme-vars';
 import {CoreButton} from '../design-system/core-button.element';
+
+const mintModalNavigationKey = 'mint-modal';
 
 export const MintModal = defineCreatorNftElement({
     tagName: 'tcnft-mint-modal',
@@ -37,6 +37,7 @@ export const MintModal = defineCreatorNftElement({
         inputDescription: undefined as string | undefined,
         phrases: {
             flair: 'NFT Flair',
+            loading: 'Loading...',
             mintUrl: 'Mint URL:',
             nftDescription: 'Content Snippet',
             nftFlair: 'Content Flair',
@@ -47,6 +48,9 @@ export const MintModal = defineCreatorNftElement({
             priceNoMatchUrl: 'Preview price no longer matches current URL.',
             purchase: 'Purchase',
             urlError: 'Invalid URL',
+            grantSelf: 'Get for Free',
+            availableToCreators: 'This only shows up for verified content creator accounts.',
+
             mintingFailed(message: string) {
                 return `Minting failed: ${message}`;
             },
@@ -77,7 +81,7 @@ export const MintModal = defineCreatorNftElement({
             flex-direction: column;
         }
 
-        ${CoreInput} {
+        ${CoreTextInput} {
             width: 100%;
             max-width: 100%;
         }
@@ -96,7 +100,6 @@ export const MintModal = defineCreatorNftElement({
             margin-bottom: 8px;
             padding-left: 4px;
             transition: ${themeEffectTransitionTimeVar};
-            color: ${themeForegroundDimColorVar};
 
             display: -webkit-box;
             -webkit-line-clamp: 4;
@@ -138,6 +141,10 @@ export const MintModal = defineCreatorNftElement({
             margin: 0;
             padding: 0;
             text-align: right;
+        }
+
+        .special-message {
+            font-size: 0.8em;
         }
 
         .show {
@@ -197,9 +204,6 @@ export const MintModal = defineCreatorNftElement({
         ${CoreButton} {
             align-self: flex-end;
         }
-        .tcnft-core-button-not-clickable {
-            opacity: ${overlayActiveOpacityVar};
-        }
 
         .flair-selector {
             cursor: pointer;
@@ -211,6 +215,13 @@ export const MintModal = defineCreatorNftElement({
             align-items: center;
             padding: 4px;
             width: min-content;
+            font: inherit;
+            background: none;
+            outline: none;
+        }
+
+        .flair-selector:focus {
+            border-color: ${themeForegroundPrimaryAccentColorVar};
         }
 
         .flair-selector > img,
@@ -309,11 +320,62 @@ export const MintModal = defineCreatorNftElement({
             ? props.phrases.priceWithCurrency(props.approvedMintPrice.displayPrice)
             : props.phrases.noPrice;
 
-        const urlSubLabel = props.urlError
+        const urlInputCaption = props.urlError
             ? props.phrases.urlError
-            : `${props.phrases.mintUrl} ${props.standardizedUrl || ''}`;
+            : props.standardizedUrl
+            ? `${props.phrases.mintUrl} ${props.standardizedUrl || ''}`
+            : '';
 
         const priceWarning = props.priceError || props.phrases.priceNoMatchUrl;
+
+        const getForFreeForContentCreators: TemplateResult | string = props.currentUser
+            ?.isContentCreator
+            ? html`
+                <section>
+                    <${CoreButton}
+                        @click=${() => {
+                            if (!props.currentUser) {
+                                throw new Error(`Can't grant free NFT, not logged in.`);
+                            }
+                            if (!props.currentUser.isContentCreator) {
+                                throw new Error(`Can't grant free NFT, not a content creator.`);
+                            }
+                            if (props.mintingPromise) {
+                                throw new Error(`Minting already in progress.`);
+                            }
+                            if (!props.inputUrl) {
+                                throw new Error(`Missing URL for NFT.`);
+                            }
+                            preventNavigation(mintModalNavigationKey);
+                            props.mintingPromise = giveSelfNft(props.currentUser.nftActor, {
+                                url: standardizeUrl(props.inputUrl),
+                                description: props.inputDescription || '',
+                                selectedFlair: props.selectedFlair,
+                            });
+                            props.mintingPromise
+                                .then((newNftId) => {
+                                    genericDispatch(new UpdateNftCountEvent(newNftId));
+                                    genericDispatch(new UpdateBrowseDataEvent());
+                                    genericDispatch(new CloseModalsEvent());
+                                })
+                                .catch((error) => {
+                                    props.mintingError =
+                                        'message' in error ? error.message : String(error);
+                                })
+                                .finally(() => {
+                                    enableNavigation(mintModalNavigationKey);
+                                    props.mintingPromise = undefined;
+                                });
+                        }}
+                        ${assign(CoreButton.props.label, props.phrases.grantSelf)}
+                        ${assign(
+                            CoreButton.props.clickable,
+                            !!props.inputUrl && !props.mintingPromise,
+                        )}
+                    ></${CoreButton}>
+                    <p class="special-message">${props.phrases.availableToCreators}</p>
+                </section>`
+            : '';
 
         return html`
             <form @submit=${(event: SubmitEvent) => {
@@ -321,7 +383,7 @@ export const MintModal = defineCreatorNftElement({
                 event.preventDefault();
             }}>
                 <section>
-                    <${CoreInput}
+                    <${CoreTextInput}
                         @keydown=${(event: KeyboardEvent) => {
                             if (
                                 event.key.toLowerCase() === 'enter' &&
@@ -331,7 +393,7 @@ export const MintModal = defineCreatorNftElement({
                                 previewNftMinting(props.inputUrl);
                             }
                         }}
-                        ${listen(CoreInput.events.valueChange, (event) => {
+                        ${listen(CoreTextInput.events.valueChange, (event) => {
                             props.inputUrl = event.detail;
                             props.mintingError = undefined;
                             props.urlError = false;
@@ -349,25 +411,22 @@ export const MintModal = defineCreatorNftElement({
                         @blur=${() => {
                             props.triggerFocus = false;
                         }}
-                        ${assign(CoreInput.props.triggerFocus, props.triggerFocus)}
-                        ${assign(CoreInput.props.maxLength, props.maxUrlLength)}
-                        ${assign(CoreInput.props.value, props.inputUrl)}
-                        ${assign(CoreInput.props.autoFocus, !props.inputUrl)}
-                        ${assign(CoreInput.props.label, props.phrases.nftUrl)}
-                    ></${CoreInput}>
-                    <span
-                        title=${urlSubLabel}
-                        class="sub-input-label ${props.urlError ? 'warning-label' : ''}
-                        ${props.standardizedUrl || props.urlError ? 'show' : ''}"
-                    >
-                        ${urlSubLabel}
-                    </span>
+                        class="tcnft-core-text-input-monospace-caption ${
+                            props.urlError ? 'tcnft-core-text-input-warning' : ''
+                        }"
+                        ${assign(CoreTextInput.props.triggerFocus, props.triggerFocus)}
+                        ${assign(CoreTextInput.props.maxLength, props.maxUrlLength)}
+                        ${assign(CoreTextInput.props.value, props.inputUrl)}
+                        ${assign(CoreTextInput.props.autoFocus, !props.inputUrl)}
+                        ${assign(CoreTextInput.props.label, props.phrases.nftUrl)}
+                        ${assign(CoreTextInput.props.caption, urlInputCaption)}
+                    ></${CoreTextInput}>
                     <span>${props.phrases.nftFlair}</span>
                     <div class="flair-options">
                         ${props.flairKeys.map((flairKey) => {
                             const flairData = getFlairLabelAndUrl(flairKey);
                             return html`
-                                <div
+                                <button
                                     @click=${() => {
                                         props.selectedFlair = flairKey;
                                     }}
@@ -383,20 +442,20 @@ export const MintModal = defineCreatorNftElement({
                                               <div class="empty-flair"></div>
                                           `}
                                     <span>${flairData.label}</span>
-                                </div>
+                                </button>
                             `;
                         })}
                     </div>
-                    <${CoreInput}
+                    <${CoreTextInput}
                         class="description-input"
-                        ${listen(CoreInput.events.valueChange, (event) => {
+                        ${listen(CoreTextInput.events.valueChange, (event) => {
                             props.inputDescription = event.detail;
                         })}
-                        ${assign(CoreInput.props.value, props.inputDescription)}
-                        ${assign(CoreInput.props.label, props.phrases.nftDescription)}
-                        ${assign(CoreInput.props.multiline, true)}
-                        ${assign(CoreInput.props.maxLength, props.maxDescriptionLength)}
-                    ></${CoreInput}>
+                        ${assign(CoreTextInput.props.value, props.inputDescription)}
+                        ${assign(CoreTextInput.props.label, props.phrases.nftDescription)}
+                        ${assign(CoreTextInput.props.multiline, true)}
+                        ${assign(CoreTextInput.props.maxLength, props.maxDescriptionLength)}
+                    ></${CoreTextInput}>
                     <span
                         class="sub-input-label ${showDescriptionLength ? 'show' : ''}
                         ${showDescriptionLengthWarning ? 'warning-label' : ''}"
@@ -425,7 +484,7 @@ export const MintModal = defineCreatorNftElement({
                         <div class="price-number">
                             <${LoadingIndicator}
                                 ${assign(LoadingIndicator.props.isLoading, isPriceLoading)}
-                                ${assign(LoadingIndicator.props.withLabel, true)}
+                                ${assign(LoadingIndicator.props.label, props.phrases.loading)}
                             ${assign(LoadingIndicator.props.size, 16)}
                             ></${LoadingIndicator}>
                             ${displayPrice}
@@ -448,40 +507,48 @@ export const MintModal = defineCreatorNftElement({
                             if (!props.currentUser) {
                                 throw new Error(`Can't purchase NFT, not logged in.`);
                             }
-                            if (props.inputUrl && props.approvedMintPrice) {
-                                preventNavigation();
-                                props.mintingPromise = mintNft({
-                                    url: standardizeUrl(props.inputUrl),
-                                    description: props.inputDescription || '',
-                                    selectedFlair: props.selectedFlair,
-                                    price: props.approvedMintPrice.approvedPrice.amount.e8s,
-                                    priceRequestUid: props.approvedMintPrice.approvedPrice.ulid,
-                                    ...props.currentUser,
-                                });
-                                props.mintingPromise
-                                    .then(() => {
-                                        props.inputUrl = undefined;
-                                        props.approvedMintPrice = undefined;
-                                        props.inputDescription = undefined;
-                                        props.standardizedUrl = undefined;
-                                        props.selectedFlair = FlairKey.None;
-                                        genericDispatch(new UpdateNftCountEvent());
-                                        genericDispatch(new CloseModalsEvent());
-                                    })
-                                    .catch((error) => {
-                                        props.mintingError =
-                                            'message' in error ? error.message : String(error);
-                                    })
-                                    .finally(() => {
-                                        enableNavigation();
-                                        props.mintingPromise = undefined;
-                                    });
+                            if (props.mintingPromise) {
+                                throw new Error(`Minting already in progress.`);
                             }
+                            if (!props.inputUrl) {
+                                throw new Error(`Missing URL for NFT.`);
+                            }
+                            if (!props.approvedMintPrice) {
+                                throw new Error('Missing approved minting price.');
+                            }
+                            preventNavigation(mintModalNavigationKey);
+                            props.mintingPromise = mintNft({
+                                url: standardizeUrl(props.inputUrl),
+                                description: props.inputDescription || '',
+                                selectedFlair: props.selectedFlair,
+                                price: props.approvedMintPrice.approvedPrice.amount.e8s,
+                                priceRequestUid: props.approvedMintPrice.approvedPrice.ulid,
+                                ...props.currentUser,
+                            });
+                            props.mintingPromise
+                                .then((newNftId) => {
+                                    props.inputUrl = undefined;
+                                    props.approvedMintPrice = undefined;
+                                    props.inputDescription = undefined;
+                                    props.standardizedUrl = undefined;
+                                    props.selectedFlair = FlairKey.None;
+                                    genericDispatch(new UpdateNftCountEvent(newNftId));
+                                    genericDispatch(new CloseModalsEvent());
+                                })
+                                .catch((error) => {
+                                    props.mintingError =
+                                        'message' in error ? error.message : String(error);
+                                })
+                                .finally(() => {
+                                    enableNavigation(mintModalNavigationKey);
+                                    props.mintingPromise = undefined;
+                                });
                         }}
                         ${assign(CoreButton.props.label, props.phrases.purchase)}
                         ${assign(CoreButton.props.clickable, canClickMint)}
                     ></${CoreButton}>
                 </section>
+                ${getForFreeForContentCreators}
             </form>
         `;
     },

@@ -1,4 +1,4 @@
-import {getEnumTypedValues} from 'augment-vir/dist/web-index';
+import {getEnumTypedValues} from 'augment-vir';
 
 const baseUrl = '/flairs/';
 

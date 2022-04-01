@@ -10,7 +10,7 @@ import {
     themeInteractionTransitionTimeVar,
     themeMenuShadowColorVar,
 } from '@frontend/src/ui/styles/theme-vars';
-import {menuZ} from '@frontend/src/ui/styles/z-index';
+import {menuZIndex} from '@frontend/src/ui/styles/z-index';
 import {css, html} from 'element-vir';
 import {TemplateResult} from 'lit';
 
@@ -19,8 +19,10 @@ export const UserAvatar = defineCreatorNftElement({
     props: {
         username: undefined as undefined | string,
         avatarUrl: undefined as undefined | string,
-        loadingAvatarUrl: undefined as undefined | Promise<HTMLImageElement>,
-        loadedAvatarImage: undefined as undefined | HTMLImageElement,
+        loadingAvatarUrl: undefined as
+            | undefined
+            | {promise: Promise<HTMLImageElement>; url: string},
+        loadedAvatarImage: undefined as undefined | {image: HTMLImageElement; url: string},
         windowListener: undefined as undefined | ((event: MouseEvent) => void),
         /**
          * Start with undefined so that there is a third state (in addition to "opened" and
@@ -39,6 +41,7 @@ export const UserAvatar = defineCreatorNftElement({
             border: 2px solid ${themeForegroundPrimaryAccentColorVar};
             border-radius: 50%;
             position: relative;
+            display: inline-block;
             ${applyThemeColors}
         }
 
@@ -123,7 +126,7 @@ export const UserAvatar = defineCreatorNftElement({
             transition-duration: 0s;
             transition-delay: ${themeInteractionTransitionTimeVar};
             visibility: visible;
-            z-index: ${menuZ};
+            z-index: ${menuZIndex};
         }
 
         .avatar-menu ul {
@@ -175,29 +178,31 @@ export const UserAvatar = defineCreatorNftElement({
             window.addEventListener('click', props.windowListener);
         }
 
-        if (props.avatarUrl && !props.loadingAvatarUrl) {
-            props.loadingAvatarUrl = new Promise<HTMLImageElement>((resolve, reject) => {
-                if (props.avatarUrl) {
+        if (
+            props.avatarUrl &&
+            (props.loadingAvatarUrl ? props.loadingAvatarUrl.url !== props.avatarUrl : true) &&
+            (props.loadedAvatarImage ? props.loadedAvatarImage.url !== props.avatarUrl : true)
+        ) {
+            const urlToLoad = props.avatarUrl;
+            props.loadingAvatarUrl = {
+                url: urlToLoad,
+                promise: new Promise<HTMLImageElement>((resolve, reject) => {
                     const image = new Image();
                     image.onload = () => {
                         // image loading succeeded
-                        props.loadedAvatarImage = image;
+                        props.loadedAvatarImage = {image, url: urlToLoad};
                         resolve(image);
                     };
                     image.onerror = () => {
-                        // image loading failed
-                        /**
-                         * No need to reject this right now cause nobody is using this promise and
-                         * if we reject it, at least some browsers log a "Unresolved Promise
-                         * Rejection" error in the console.
-                         */
-                        // reject(`failed to load ${props.avatarUrl}`);
+                        props.loadedAvatarImage = undefined;
                     };
-                    image.src = props.avatarUrl;
-                } else {
-                    reject('props.avatarUrl no longer exists');
-                }
-            });
+                    image.src = urlToLoad;
+                }).finally(() => {
+                    props.loadingAvatarUrl = undefined;
+                }),
+            };
+        } else if (!props.avatarUrl) {
+            props.loadedAvatarImage = undefined;
         }
 
         return html`
@@ -216,10 +221,14 @@ export const UserAvatar = defineCreatorNftElement({
                     }
                 }}
             >
-                <div class="avatar-image-background ${props.loadedAvatarImage ? '' : 'no-avatar'}">
+                <div
+                    class="avatar-image-background ${props.loadedAvatarImage && props.avatarUrl
+                        ? ''
+                        : 'no-avatar'}"
+                >
                     <div
                         class="avatar-image"
-                        style="background-image: url('${props.loadedAvatarImage?.src}');"
+                        style="background-image: url('${props.loadedAvatarImage?.image.src}');"
                     ></div>
                 </div>
                 ${props.menuEnabled
@@ -235,8 +244,6 @@ export const UserAvatar = defineCreatorNftElement({
                           <ul
                               @click=${(event: MouseEvent) => {
                                   if (props.menuEnabled) {
-                                      event.preventDefault();
-                                      event.stopPropagation();
                                       props.menuOpened = false;
                                   }
                               }}

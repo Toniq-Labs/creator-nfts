@@ -30,16 +30,25 @@ export const LoadingIndicator = defineCreatorNftElement({
         size: 80,
         animationDurationMs: 600,
         isLoading: false,
-        withLabel: false,
-        phrases: {
-            loading: 'Loading...',
-        },
+        label: undefined as string | undefined,
         strokeMapping: (
             [
-                [160, 2],
-                [80, 3],
-                [32, 5],
-                [16, 5],
+                // prettier-elements-per-line: 2
+                [
+                    160, 2,
+                ],
+                // prettier-elements-per-line: 2
+                [
+                    80, 3,
+                ],
+                // prettier-elements-per-line: 2
+                [
+                    32, 5,
+                ],
+                // prettier-elements-per-line: 2
+                [
+                    16, 5,
+                ],
             ] as [number, number][]
         ).sort((a, b) => b[0] - a[0]),
         lastShowTime: undefined as number | undefined,
@@ -214,9 +223,9 @@ export const LoadingIndicator = defineCreatorNftElement({
                     </g>
                 </svg>
             </div>
-            ${props.withLabel
+            ${props.label
                 ? html`
-                      <span class="loading-label">${props.phrases.loading}</span>
+                      <span class="loading-label">${props.label}</span>
                   `
                 : ''}
         `;

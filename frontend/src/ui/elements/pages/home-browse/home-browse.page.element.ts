@@ -1,49 +1,73 @@
-import {trimKeyLength} from '@frontend/src/augments/object';
+import {isPromise} from '@frontend/src/augments/promise';
 import {
-    getCategoryContents,
-    getCurrentUserContentCategories,
-} from '@frontend/src/canisters/creator-content-canister';
-import {CategoryId, CreatorContentMetadata} from '@frontend/src/data/creator-content';
-import {NftUserWithNftList} from '@frontend/src/data/nft-user';
+    getIndividualPostContent,
+    UserBrowseData,
+} from '@frontend/src/canisters/nft/creator-content/canister-actions-for-user';
+import {NftUser} from '@frontend/src/data/nft-user';
+import {
+    readLocalStorageValue,
+    writeLocalStorageValue,
+} from '@frontend/src/local-storage/local-storage';
+import {createPostIdLocalStorageKey} from '@frontend/src/local-storage/local-storage-keys';
 import {defineCreatorNftElement} from '@frontend/src/ui/define-element/define-creator-nft-element';
+import {CategoryButton} from '@frontend/src/ui/elements/design-system/category-button.element';
 import {CoreButton} from '@frontend/src/ui/elements/design-system/core-button.element';
+import {PostCard} from '@frontend/src/ui/elements/design-system/post-card.element';
 import {RouteLink} from '@frontend/src/ui/elements/design-system/route-link.element';
 import {LoadingIndicator} from '@frontend/src/ui/elements/loading/loading-indicator.element';
-import {ContentCard} from '@frontend/src/ui/elements/pages/home-browse/content-card.element';
-import {ViewContent} from '@frontend/src/ui/elements/pages/home-browse/view-content.element';
-import {ReplaceCurrentRouteEvent} from '@frontend/src/ui/global-events/trigger-tcnft-app-route-change';
+import {ViewPost} from '@frontend/src/ui/elements/pages/view-post.element';
+import {ReplaceCurrentRouteEvent} from '@frontend/src/ui/global-events/trigger-tcnft-app-route-change.event';
+import {UpdateBrowseDataEvent} from '@frontend/src/ui/global-events/update-browse-data.event';
 import {emptyRoute, tcnftAppRouter} from '@frontend/src/ui/routes/app-router';
 import {TcnftAppFullRoute, TcnftAppTopLevelRoute} from '@frontend/src/ui/routes/app-routes';
-import {
-    themeForegroundDimColorVar,
-    themeForegroundPrimaryAccentColorVar,
-} from '@frontend/src/ui/styles/theme-vars';
-import {assign, css, html} from 'element-vir';
+import {themeForegroundPrimaryAccentColorVar} from '@frontend/src/ui/styles/theme-vars';
+import {isTruthy} from 'augment-vir/dist';
+import {assign, css, html, listen} from 'element-vir';
 import {TemplateResult} from 'lit';
 import {shouldMouseEventTriggerRoutes} from 'spa-router-vir';
-import {TriggerTcnftAppRouteChangeEvent} from '../../../global-events/trigger-tcnft-app-route-change';
+import {TriggerTcnftAppRouteChangeEvent} from '../../../global-events/trigger-tcnft-app-route-change.event';
 
-const maxContentPerPage = 100 as const;
+async function loadPostContent(currentUser: NftUser, postId: string): Promise<string> {
+    if (!currentUser) {
+        throw new Error(`Cannot load post content without a logged in user.`);
+    }
+    const localStoragePostKey = createPostIdLocalStorageKey(postId);
+    const cachedContent = readLocalStorageValue(localStoragePostKey);
+    const loadFromCanisterPromise = getIndividualPostContent(postId, currentUser.nftActor).then(
+        (postContent) => {
+            // save the post content to local storage even if it's cached so it can get updated in the background
+            writeLocalStorageValue(localStoragePostKey, postContent);
+            return postContent;
+        },
+    );
+
+    if (cachedContent != undefined) {
+        return cachedContent;
+    }
+    const loadedContent = await loadFromCanisterPromise;
+    if (loadedContent != undefined) {
+        return loadedContent;
+    } else {
+        throw new Error(`Failed to load post content for post "${postId}".`);
+    }
+}
 
 export const HomeBrowsePage = defineCreatorNftElement({
     tagName: 'tcnft-home-browse-page',
     props: {
-        categoryArray: undefined as undefined | CategoryId[],
-        categoryMap: undefined as undefined | Record<string, CategoryId>,
-        /** Store the loading promise so we don't trigger loading twice */
-        loadingCategoriesPromise: undefined as undefined | Promise<CategoryId[] | undefined>,
-
-        categoryContents: undefined as
-            | undefined
-            | {categoryId: CategoryId; contentsMetadata: Record<string, CreatorContentMetadata>},
-        /** Store the loading promise so we don't trigger loading twice */
-        loadingCategoryContentsPromise: undefined as
-            | undefined
-            | Promise<Record<string, CreatorContentMetadata> | undefined>,
+        userBrowseData: undefined as undefined | UserBrowseData,
 
         currentFullRoute: undefined as TcnftAppFullRoute | undefined,
         router: tcnftAppRouter,
-        currentUser: undefined as NftUserWithNftList | undefined,
+        currentUser: undefined as NftUser | undefined,
+        selectedPostContent: {postId: undefined, postContent: undefined} as {
+            postId: string | undefined;
+            postContent: string | Promise<string> | undefined;
+        },
+        phrases: {
+            back: '< Back',
+            noPosts: 'This category has no posts yet!',
+        },
     },
     styles: css`
         :host {
@@ -53,14 +77,12 @@ export const HomeBrowsePage = defineCreatorNftElement({
         }
 
         nav {
-            width: 200px;
             flex-shrink: 0;
             max-width: 50%;
             box-sizing: border-box;
             margin: 16px 0;
-            padding: 16px 0;
+            padding: 16px;
             position: relative;
-            padding-right: 16px;
 
             border: 0 solid ${themeForegroundPrimaryAccentColorVar};
             border-right-width: 1px;
@@ -87,13 +109,6 @@ export const HomeBrowsePage = defineCreatorNftElement({
             padding: 0;
         }
 
-        .category-button {
-            --tcnft-core-button-padding: 0.12em 0.7em;
-            border-radius: 1em;
-            border: 2px solid ${themeForegroundDimColorVar};
-            font-weight: normal;
-        }
-
         .right-section {
             flex-grow: 1;
             display: flex;
@@ -101,6 +116,10 @@ export const HomeBrowsePage = defineCreatorNftElement({
             justify-content: center;
             align-items: flex-start;
             padding: 32px;
+        }
+
+        .right-section.viewing-post {
+            padding-top: 16px;
         }
 
         .content-list {
@@ -111,8 +130,7 @@ export const HomeBrowsePage = defineCreatorNftElement({
             align-items: stretch;
         }
 
-        ${ViewContent} {
-            max-width: min(1000px, 100%);
+        ${ViewPost} {
             flex-grow: 1;
             height: 100%;
         }
@@ -131,6 +149,12 @@ export const HomeBrowsePage = defineCreatorNftElement({
 
         .content-card {
             display: flex;
+        }
+
+        .view-post-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
         }
 
         ${CoreButton}.selected {
@@ -175,30 +199,60 @@ export const HomeBrowsePage = defineCreatorNftElement({
         }
     `,
     renderCallback: ({props, genericDispatch}) => {
-        if (!props.categoryArray && !props.loadingCategoriesPromise) {
-            props.loadingCategoriesPromise = getCurrentUserContentCategories();
-            props.loadingCategoriesPromise.then((categories) => {
-                props.categoryArray = categories;
-                if (categories) {
-                    props.categoryMap = categories.reduce((accum, currentCategory) => {
-                        accum[currentCategory.id] = currentCategory;
-                        return accum;
-                    }, {} as Record<string, CategoryId>);
-                }
-                props.loadingCategoriesPromise = undefined;
-            });
+        if (!props.userBrowseData && props.currentUser) {
+            genericDispatch(new UpdateBrowseDataEvent());
         }
 
-        let selectedCategoryId = props.categoryMap?.[props.currentFullRoute?.paths[1] || ''];
+        let selectedCreatorCategory =
+            props.userBrowseData && props.currentFullRoute?.paths[1]
+                ? props.userBrowseData.categories[props.currentFullRoute?.paths[1]]
+                : undefined;
 
-        if (props.categoryArray && !props.loadingCategoriesPromise && !selectedCategoryId) {
-            const firstCategory = props.categoryArray[0];
+        const selectedInitialPostData =
+            props.userBrowseData && props.currentFullRoute?.paths[2]
+                ? props.userBrowseData.posts[props.currentFullRoute?.paths[2]]
+                : undefined;
+
+        const selectedPostCreator = selectedInitialPostData
+            ? props.userBrowseData?.creators[selectedInitialPostData.creatorId]
+            : undefined;
+
+        if (
+            selectedInitialPostData &&
+            props.selectedPostContent.postId != selectedInitialPostData.id &&
+            props.currentUser
+        ) {
+            const loadContentPromise = loadPostContent(
+                props.currentUser,
+                selectedInitialPostData.id,
+            ).then((loadedContent) => {
+                props.selectedPostContent = {
+                    postId: props.selectedPostContent.postId,
+                    postContent: loadedContent,
+                };
+                return loadedContent;
+            });
+            props.selectedPostContent = {
+                postId: selectedInitialPostData.id,
+                postContent: loadContentPromise,
+            };
+        }
+
+        if (
+            props.userBrowseData &&
+            props.currentFullRoute?.paths[0] === TcnftAppTopLevelRoute.Home &&
+            !selectedCreatorCategory
+        ) {
+            const firstCategory = Object.values(props.userBrowseData.categories)[0];
             if (firstCategory) {
                 props.currentFullRoute = props.currentFullRoute && {
                     ...props.currentFullRoute,
-                    paths: [TcnftAppTopLevelRoute.Home, firstCategory.id],
+                    paths: [
+                        TcnftAppTopLevelRoute.Home,
+                        firstCategory.id,
+                    ],
                 };
-                selectedCategoryId = firstCategory;
+                selectedCreatorCategory = firstCategory;
                 genericDispatch(
                     new ReplaceCurrentRouteEvent({
                         ...props.currentFullRoute,
@@ -207,152 +261,199 @@ export const HomeBrowsePage = defineCreatorNftElement({
             }
         }
 
-        if (
-            !props.loadingCategoryContentsPromise &&
-            selectedCategoryId &&
-            (!props.categoryContents ||
-                props.categoryContents.categoryId.id !== selectedCategoryId.id)
-        ) {
-            props.loadingCategoryContentsPromise = getCategoryContents(selectedCategoryId);
-            props.loadingCategoryContentsPromise.then((contentIds) => {
-                if (contentIds && Object.keys(contentIds).length > maxContentPerPage) {
-                    console.dir(props.currentFullRoute);
-                    console.error(
-                        `Max content count (${maxContentPerPage}) exceeded on browse page.`,
+        const creatorCategories = props.userBrowseData
+            ? Object.values(props.userBrowseData.categories)
+                  .sort((a, b) => a.order - b.order)
+                  .filter(
+                      (category) =>
+                          category.nftRequirement <= (props.currentUser?.nftIdList.length ?? 0),
+                  )
+            : undefined;
+
+        const selectedCategoryPosts = selectedCreatorCategory?.postIds
+            .map((postId) => {
+                if (props.userBrowseData) {
+                    const creatorPost = props.userBrowseData.posts[postId];
+                    if (creatorPost) {
+                        return creatorPost;
+                    } else {
+                        console.error(
+                            `Could not find post with id "${postId}" from category with id "${
+                                selectedCreatorCategory!.id
+                            }"`,
+                        );
+                        return undefined;
+                    }
+                } else {
+                    throw new Error(
+                        `If selectedCreatorCategory is defined, userBroseData should be defined and loaded as well.`,
                     );
-                    contentIds = trimKeyLength(maxContentPerPage, contentIds);
                 }
+            })
+            .filter(isTruthy)
+            .sort((a, b) => b.timestamp - a.timestamp);
 
-                if (selectedCategoryId) {
-                    props.categoryContents = contentIds && {
-                        categoryId: selectedCategoryId,
-                        contentsMetadata: contentIds,
-                    };
-
-                    props.loadingCategoryContentsPromise = undefined;
-                }
-            });
-        }
-
-        const selectedContentMetadata =
-            props.categoryContents?.contentsMetadata[props.currentFullRoute?.paths[2] || ''];
-
-        return html`
-            <nav style=${Object.keys(props.categoryArray || []).length > 1 ? '' : 'display: none'}>
+        const navTemplate: TemplateResult = html`
+            <nav>
                 <ul>
-                    <${LoadingIndicator}
-                        ${assign(LoadingIndicator.props.isLoading, !props.categoryArray)}
-                    ></${LoadingIndicator}>
-                    ${(props.categoryArray || []).map((categoryId) => {
+                    ${(creatorCategories || []).map((creatorCategory) => {
                         const route: TcnftAppFullRoute = {
                             ...(props.currentFullRoute ?? emptyRoute),
-                            paths: [TcnftAppTopLevelRoute.Home, categoryId.id],
+                            paths: [
+                                TcnftAppTopLevelRoute.Home,
+                                creatorCategory.id,
+                            ],
                         };
 
                         return html`
-                            <li>
-                                <${RouteLink}
-                                    ${assign(RouteLink.props.routeLink, route)}
-                                >
-                                    <${CoreButton}
-                                        class="category-button ${
-                                            categoryId.id === selectedCategoryId?.id
-                                                ? 'selected'
-                                                : 'tcnft-core-button-text-button'
-                                        }"
-                                        ${assign(CoreButton.props.label, categoryId.label)}
-                                        @click=${(clickEvent: MouseEvent) => {
-                                            if (shouldMouseEventTriggerRoutes(clickEvent)) {
-                                                clickEvent.preventDefault();
-                                                genericDispatch(
-                                                    new TriggerTcnftAppRouteChangeEvent(route),
-                                                );
-                                            }
-                                        }}
-                                    ></${CoreButton}>
-                                </${RouteLink}>
-                            </li>
-                        `;
-                    })}
-                </ul>
-            </nav>
-            <section class="right-section">
-                <${LoadingIndicator}
-                    ${assign(
-                        LoadingIndicator.props.isLoading,
-                        !props.categoryContents || !!props.loadingCategoryContentsPromise,
-                    )}
-                ></${LoadingIndicator}>
-                ${
-                    selectedContentMetadata
-                        ? html`
-                            <${ViewContent}
-                                ${assign(
-                                    ViewContent.props.contentId,
-                                    selectedContentMetadata.contentId,
-                                )}
-                            ></${ViewContent}>
-                        `
-                        : html`
-                              <ul class="content-list">
-                                  ${Object.values(
-                                      props.categoryContents?.contentsMetadata || {},
-                                  ).map((contentMetadata) => {
-                                      const isUnlocked =
-                                          (props.currentUser?.nftIdList.length || 0) >=
-                                          contentMetadata.unlockRequirement.required;
-                                      const route: Partial<TcnftAppFullRoute> = {
-                                          paths: [
-                                              TcnftAppTopLevelRoute.Home,
-                                              contentMetadata.contentId.parentId.id,
-                                              contentMetadata.contentId.id,
-                                          ],
-                                      };
-                                      const link = props.router.createRoutesUrl({
-                                          ...props.router.getCurrentRawRoutes(),
-                                          ...route,
-                                      });
-                                      const contentCardTemplate: TemplateResult = html`
-                                        <${ContentCard}
-                                            ${assign(ContentCard.props.unlockProgress, {
-                                                ...contentMetadata.unlockRequirement,
-                                                current: props.currentUser?.nftIdList.length || 0,
-                                            })}
+                                <li>
+                                    <${RouteLink}
+                                        ${assign(RouteLink.props.routeLink, route)}
+                                    >                                        
+                                        <${CategoryButton}
                                             ${assign(
-                                                ContentCard.props.creatorId,
-                                                contentMetadata.creator,
+                                                CategoryButton.props.selected,
+                                                creatorCategory.id === selectedCreatorCategory?.id,
                                             )}
                                             ${assign(
-                                                ContentCard.props.contentId,
-                                                contentMetadata.contentId,
+                                                CategoryButton.props.categoryName,
+                                                creatorCategory.categoryLabel,
                                             )}
-                                            @click=${(clickEvent: MouseEvent) => {
-                                                if (
-                                                    isUnlocked &&
-                                                    shouldMouseEventTriggerRoutes(clickEvent)
-                                                ) {
+                                            ${listen('click', (clickEvent: MouseEvent) => {
+                                                if (shouldMouseEventTriggerRoutes(clickEvent)) {
                                                     clickEvent.preventDefault();
                                                     genericDispatch(
                                                         new TriggerTcnftAppRouteChangeEvent(route),
                                                     );
                                                 }
-                                            }}
-                                        ></${ContentCard}>`;
+                                            })}
+                                        >
+                                        </${CategoryButton}>
+                                    </${RouteLink}>
+                                </li>
+                            `;
+                    })}
+                </ul>
+            </nav>
+        `;
 
-                                      return html`
-                                          <li class="content-card">
-                                              ${isUnlocked
-                                                  ? html`
-                                                        <a href=${link}>${contentCardTemplate}</a>
-                                                    `
-                                                  : html`
-                                                        ${contentCardTemplate}
-                                                    `}
-                                          </li>
-                                      `;
-                                  })}
-                              </ul>
-                          `
+        const postsTemplate: TemplateResult = selectedCategoryPosts?.length
+            ? html`
+                  <ul class="content-list">
+                      ${selectedCategoryPosts?.map((creatorPost) => {
+                          if (!props.userBrowseData) {
+                              return '';
+                          }
+
+                          const isUnlocked =
+                              (props.currentUser?.nftIdList.length || 0) >=
+                              creatorPost.nftRequirement;
+                          const route: Partial<TcnftAppFullRoute> = {
+                              paths: [
+                                  TcnftAppTopLevelRoute.Home,
+                                  creatorPost.categoryId,
+                                  creatorPost.id,
+                              ],
+                          };
+                          const link = props.router.createRoutesUrl({
+                              ...props.router.getCurrentRawRoutes(),
+                              ...route,
+                          });
+
+                          const creator = props.userBrowseData.creators[creatorPost.creatorId];
+
+                          if (!creator) {
+                              console.error(
+                                  `Could not find creator with id "${creatorPost.creatorId}" from post "${creatorPost.id}"`,
+                              );
+                          }
+
+                          const contentCardTemplate: TemplateResult = html`
+                      <${PostCard}
+                          ${assign(PostCard.props.unlockProgress, {
+                              required: creatorPost.nftRequirement,
+                              current: props.currentUser?.nftIdList.length || 0,
+                          })}
+                          ${assign(PostCard.props.creator, creator)}
+                          ${assign(PostCard.props.creatorPost, creatorPost)}
+                          @click=${(clickEvent: MouseEvent) => {
+                              if (isUnlocked && shouldMouseEventTriggerRoutes(clickEvent)) {
+                                  clickEvent.preventDefault();
+                                  genericDispatch(new TriggerTcnftAppRouteChangeEvent(route));
+                              }
+                          }}
+                      ></${PostCard}>`;
+
+                          return html`
+                              <li class="content-card">
+                                  ${isUnlocked
+                                      ? html`
+                                            <a href=${link}>${contentCardTemplate}</a>
+                                        `
+                                      : html`
+                                            ${contentCardTemplate}
+                                        `}
+                              </li>
+                          `;
+                      })}
+                  </ul>
+              `
+            : html`
+                  <p>${props.phrases.noPosts}</p>
+              `;
+
+        const viewPostTemplate: TemplateResult | string =
+            selectedInitialPostData && selectedCreatorCategory
+                ? html`
+                    <div class="view-post-wrapper">
+                        <${LoadingIndicator}
+                            ${assign(
+                                LoadingIndicator.props.isLoading,
+                                isPromise(props.selectedPostContent.postContent) ||
+                                    !props.selectedPostContent.postContent,
+                            )}
+                        ></${LoadingIndicator}>
+                        <${RouteLink}
+                                ${assign(RouteLink.props.routeLink, {
+                                    paths: [
+                                        TcnftAppTopLevelRoute.Home,
+                                        selectedCreatorCategory.id,
+                                    ],
+                                })}
+                            class="back-to-category">
+                            ${props.phrases.back}
+                        </${RouteLink}>
+                        <${ViewPost}
+                            ${assign(ViewPost.props.postId, selectedInitialPostData.id)}
+                            ${assign(ViewPost.props.postCreator, selectedPostCreator)}
+                            ${assign(
+                                ViewPost.props.postTimestamp,
+                                selectedInitialPostData.timestamp,
+                            )}
+                            ${assign(ViewPost.props.postTitle, selectedInitialPostData.postLabel)}
+                            ${assign(
+                                ViewPost.props.postContent,
+                                isPromise(props.selectedPostContent.postContent)
+                                    ? undefined
+                                    : props.selectedPostContent.postContent,
+                            )}
+                        ></${ViewPost}>
+                    </div>
+                `
+                : '';
+
+        return html`
+            <${LoadingIndicator}
+                ${assign(LoadingIndicator.props.isLoading, !creatorCategories)}
+            ></${LoadingIndicator}>
+            ${navTemplate}
+            <section class="right-section ${
+                selectedInitialPostData && selectedCreatorCategory ? 'viewing-post' : ''
+            }">
+                ${
+                    selectedInitialPostData && selectedCreatorCategory
+                        ? viewPostTemplate
+                        : postsTemplate
                 }
             </section>
         `;

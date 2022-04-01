@@ -21,6 +21,8 @@ export const rootElementDefaultStyles = css`
         inset: 0;
     }
 
+    /* These styles are not contained in the root-elements.css file because they reference small
+    reusable styles via JS objects */
     main {
         width: 100%;
         height: 100%;

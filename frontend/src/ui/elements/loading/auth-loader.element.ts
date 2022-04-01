@@ -1,21 +1,53 @@
 import {createNewAuth} from '@frontend/src/auth/create-new-auth';
-import {loadCurrentAuth} from '@frontend/src/auth/load-current-auth';
+import {tryToLoadAuthWithRetires} from '@frontend/src/auth/load-current-auth';
+import {removeCurrentAuth} from '@frontend/src/auth/remove-current-auth';
 import {NftUser} from '@frontend/src/data/nft-user';
 import {defineCreatorNftElement} from '@frontend/src/ui/define-element/define-creator-nft-element';
-import {css, defineElementEvent, html} from 'element-vir';
+import {extractErrorMessage} from 'augment-vir';
+import {css, defineElementEvent, html, RenderParams} from 'element-vir';
+
+function loadAuth({
+    events,
+    dispatch,
+    props,
+}: Pick<
+    RenderParams<
+        NonNullable<typeof AuthLoader.initInput.props>,
+        NonNullable<typeof AuthLoader.initInput.events>
+    >,
+    'props' | 'dispatch' | 'events'
+>) {
+    if (!props.signingInPromise) {
+        throw new Error(`Forgot to set signingInPromise before calling loadAuth.`);
+    }
+
+    props.signingInPromise
+        .then((newAuth) => {
+            props.loadedUserId = newAuth;
+            dispatch(new events.userIdLoaded(newAuth));
+        })
+        .catch((error) => {
+            console.error(error);
+            removeCurrentAuth();
+            dispatch(new events.userIdLoadingError(extractErrorMessage(error)));
+        })
+        .finally(() => {
+            props.signingInPromise = undefined;
+        });
+    return;
+}
 
 export const AuthLoader = defineCreatorNftElement({
     tagName: 'tcnft-auth-loader',
     props: {
         signInNow: false,
-        signOutNow: false,
-        initialUserId: loadCurrentAuth(),
-        loadingInitialUserIdPromise: undefined as Promise<void> | undefined,
         loadedUserId: undefined as NftUser | undefined,
+        isCreatorPromise: undefined as Promise<void> | undefined,
         signingInPromise: undefined as Promise<NftUser | undefined> | undefined,
     },
     events: {
         userIdLoaded: defineElementEvent<NftUser | undefined>(),
+        userIdLoadingError: defineElementEvent<string>(),
     },
     styles: css`
         :host {
@@ -23,25 +55,18 @@ export const AuthLoader = defineCreatorNftElement({
             display: none;
         }
     `,
-    renderCallback: async ({props, dispatch, events}) => {
-        if (
-            props.signInNow &&
-            !props.loadedUserId &&
-            !props.loadingInitialUserIdPromise &&
-            !props.signingInPromise
-        ) {
+    initCallback: ({props, dispatch, events}) => {
+        props.signingInPromise = tryToLoadAuthWithRetires();
+        loadAuth({props, dispatch, events});
+    },
+    renderCallback: ({props, dispatch, events}) => {
+        if (props.signInNow) {
             props.signInNow = false;
-            props.signingInPromise = createNewAuth();
-            const newAuth = await props.signingInPromise;
-            props.loadedUserId = newAuth;
-            dispatch(new events.userIdLoaded(newAuth));
-            props.signingInPromise = undefined;
-        }
+            if (!props.signingInPromise && !props.loadedUserId) {
+                props.signingInPromise = createNewAuth();
 
-        if (!props.loadingInitialUserIdPromise && props.initialUserId) {
-            props.loadingInitialUserIdPromise = props.initialUserId.then((initialUserId) => {
-                dispatch(new events.userIdLoaded(initialUserId));
-            });
+                loadAuth({props, dispatch, events});
+            }
         }
 
         return html``;

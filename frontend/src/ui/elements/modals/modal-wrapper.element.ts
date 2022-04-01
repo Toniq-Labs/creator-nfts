@@ -1,8 +1,11 @@
-import {NftUserWithNftList} from '@frontend/src/data/nft-user';
+import {removeCategoryNftRequirement} from '@frontend/src/canisters/nft/creator-content/creator-content-transforms';
+import {ContentCreatorDashboardData} from '@frontend/src/canisters/nft/creator-content/creator-content-types';
+import {NftUser} from '@frontend/src/data/nft-user';
 import {defineCreatorNftElement} from '@frontend/src/ui/define-element/define-creator-nft-element';
 import {BrowseNftsModal} from '@frontend/src/ui/elements/modals/browse-nfts.modal.element';
+import {EditJsonModal} from '@frontend/src/ui/elements/modals/edit-json.modal.element';
 import {MintModal} from '@frontend/src/ui/elements/modals/mint.modal.element';
-import {CloseModalsEvent} from '@frontend/src/ui/global-events/close-modals';
+import {CloseModalsEvent} from '@frontend/src/ui/global-events/close-modals.event';
 import {TcnftAppFullRoute} from '@frontend/src/ui/routes/app-routes';
 import {ModalName} from '@frontend/src/ui/routes/modal-logic';
 import {
@@ -14,7 +17,7 @@ import {
     themeForegroundColorVar,
     themeInteractionTransitionTimeVar,
 } from '@frontend/src/ui/styles/theme-vars';
-import {modalZ} from '@frontend/src/ui/styles/z-index';
+import {modalZIndex} from '@frontend/src/ui/styles/z-index';
 import {assign, css, defineElementEvent, html, listen, onDomCreated} from 'element-vir';
 import {getCurrentModalKey} from '../../routes/modal-logic';
 
@@ -22,20 +25,22 @@ export const ModalWrapper = defineCreatorNftElement({
     tagName: 'tcnft-modal-wrapper',
     props: {
         currentRoute: undefined as TcnftAppFullRoute | undefined,
+        currentCreatorContentData: undefined as ContentCreatorDashboardData | undefined,
         phrases: {
             modalLabels: {
                 [ModalName.Mint]: 'Mint',
                 [ModalName.BrowseNft]: 'Your minted NFTs',
+                [ModalName.EditJson]: 'Edit JSON',
             },
         },
-        currentUser: undefined as NftUserWithNftList | undefined,
+        currentUser: undefined as NftUser | undefined,
     },
     events: {
         modalShown: defineElementEvent<ModalName | undefined>(),
     },
     styles: css`
         .fill-screen {
-            z-index: ${modalZ};
+            z-index: ${modalZIndex};
             position: fixed;
             inset: 0;
             display: flex;
@@ -87,7 +92,7 @@ export const ModalWrapper = defineCreatorNftElement({
             max-height: calc(100% - 16px);
             max-width: calc(100% - 16px);
             position: relative;
-            z-index: ${modalZ - 1};
+            z-index: ${modalZIndex - 1};
             overflow-y: auto;
             margin: 8px;
         }
@@ -176,6 +181,7 @@ export const ModalWrapper = defineCreatorNftElement({
 
         return html`
             <section
+                class="fill-screen ${modalToShow ? '' : 'hidden'}"
                 ${onDomCreated(() => {
                     document.body.addEventListener('keydown', (event) => {
                         if (
@@ -186,7 +192,6 @@ export const ModalWrapper = defineCreatorNftElement({
                         }
                     });
                 })}
-                class="fill-screen ${modalToShow ? '' : 'hidden'}"
                 ${listen(CloseModalsEvent, () => clearModals())}
             >
                 <div class="modal-border">
@@ -220,6 +225,23 @@ export const ModalWrapper = defineCreatorNftElement({
                             ${assign(BrowseNftsModal.props.currentRoute, props.currentRoute)}
                             ${assign(BrowseNftsModal.props.currentUser, props.currentUser)}
                         ></${BrowseNftsModal}>
+                        <${EditJsonModal}
+                            style=${modalToShow === ModalName.EditJson ? '' : 'display: none;'}
+                            ${assign(EditJsonModal.props.currentRoute, props.currentRoute)}
+                            ${assign(EditJsonModal.props.currentUser, props.currentUser)}
+                            ${assign(
+                                EditJsonModal.props.currentJson,
+                                props.currentCreatorContentData
+                                    ? JSON.stringify(
+                                          removeCategoryNftRequirement(
+                                              props.currentCreatorContentData,
+                                          ),
+                                          null,
+                                          4,
+                                      )
+                                    : undefined,
+                            )}
+                        ></${EditJsonModal}>
                     </div>
                 </div>
                 <div

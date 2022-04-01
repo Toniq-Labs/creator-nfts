@@ -1,5 +1,5 @@
-import {getNftImageUrls} from '@frontend/src/canisters/nft-canister';
-import {NftUserWithNftList} from '@frontend/src/data/nft-user';
+import {getNftImageUrls} from '@frontend/src/canisters/nft/nft-images';
+import {NftUser} from '@frontend/src/data/nft-user';
 import {defineCreatorNftElement} from '@frontend/src/ui/define-element/define-creator-nft-element';
 import {TcnftAppFullRoute} from '@frontend/src/ui/routes/app-routes';
 import {css, html} from 'element-vir';
@@ -8,7 +8,7 @@ export const BrowseNftsModal = defineCreatorNftElement({
     tagName: 'tcnft-browse-nfts-modal',
     props: {
         currentRoute: undefined as TcnftAppFullRoute | undefined,
-        currentUser: undefined as NftUserWithNftList | undefined,
+        currentUser: undefined as NftUser | undefined,
     },
     styles: css`
         :host {

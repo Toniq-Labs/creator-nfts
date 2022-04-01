@@ -22,3 +22,19 @@ export function e8sToIcp(e8sPrice: bigint): number {
 
     return icp;
 }
+
+export function clamp({
+    value,
+    min,
+    max,
+}: {
+    value: number | undefined;
+    min: number;
+    max: number;
+}): number | undefined {
+    if (value == undefined) {
+        return undefined;
+    }
+
+    return Math.max(Math.min(value, max), min);
+}

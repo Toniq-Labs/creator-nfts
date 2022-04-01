@@ -5,6 +5,7 @@
 import AID "mo:ext/util/AccountIdentifier";
 import Array "mo:base/Array";
 import Blob "mo:base/Blob";
+import Buffer "mo:base/Buffer";
 import Cycles "mo:base/ExperimentalCycles";
 import Debug "mo:base/Debug";
 import Error "mo:base/Error";
@@ -23,6 +24,7 @@ import Result "mo:base/Result";
 import SourceUlid "mo:ulid/Source";
 import Text "mo:base/Text";
 import TokenIdentifier "mo:ext/Core";
+import TrieSet "mo:base/TrieSet";
 import ULID "mo:ulid/ULID";
 import XorShift "mo:rand/XorShift";
 
@@ -51,6 +53,7 @@ shared ({caller = owner}) actor class CreatorNft() = this {
   type TransferResponse = ExtCore.TransferResponse;
   type User = ExtCore.User;
   type ULID = ULID.ULID;
+  
   public type MintPaidRequest = {
     to : ExtCore.User;
     metadata : ?Blob;
@@ -58,24 +61,82 @@ shared ({caller = owner}) actor class CreatorNft() = this {
     blockId : Nat64;
     ulid : Text;
   };
+  
+  // for content creators to give themselves NFTs
+  public type SelfRequest = {
+    metadata : ?Blob;
+  };
+  
   public type ApprovedPrice = {
     ulid : Text;
     amount : Ledger.ICP;
   };
-  public type Keys = {
-    path : Text;
-    page : Text;
+
+  // This is what's initially shown to users, before it has been verified that they have sufficient
+  // nfts minted to view the post's content.
+  public type RawInitialCreatorPostData = {
+    postLabel : Text;
+    nftRequirement : Nat;
+    timestamp : Nat;
+
+    id : Text;
+    categoryId : Text;
+    creatorId : Text;
+  };
+  
+  // This type must be kept in sync with the type of the same name in backup/main.mo
+  public type RawCreatorPost = {
+    postLabel : Text;
+    content : Text;
+    nftRequirement : Nat;
+    timestamp : Nat;
+
+    id : Text;
+    categoryId : Text;
+    creatorId : Text;
+  };
+
+  // This type must be kept in sync with the type of the same name in backup/main.mo
+  public type RawCreatorCategory = {
+    categoryLabel : Text;
+    nftRequirement: Nat;
+    order : Nat;
+    
+    id : Text;
+    postIds: [Text];
+  };
+
+  // This type must be kept in sync with the type of the same name in backup/main.mo
+  public type RawCreator = {
+    name : Text;
+    avatarUrl : Text;
+    
+    id : Text;
+  };
+
+  // this data is only available to content creators in the creator dashboard
+  public type RawBulkCreatorData = {
+    creators : [(Text, RawCreator)];
+    categories : [(Text, RawCreatorCategory)];
+    posts : [(Text, RawCreatorPost)];
+  };
+
+  // this is the data shown to users
+  public type RawUserCreatorData = {
+    creators : [(Text, RawCreator)];
+    categories : [(Text, RawCreatorCategory)];
+    posts : [(Text, RawInitialCreatorPostData)];
   };
   
   private let EXTENSIONS : [Extension] = ["@ext/common", "@ext/nonfungible"];
 
-  /*cspell:disable*/
-  // TODO: add deployed ledger canister princpal here:
-  private let ledgerC : LedgerC.Interface = actor("");
-  // TODO: add creator wallet address here.
-  // this is the address that receive minting payments
+  /* cspell:disable */
+  // TODO: add deployed ledger canister principal here:
+  private let ledgerC : LedgerC.Interface = actor("2vxsx-fae");
+  // TODO: add creator wallet address below.
+  // this is the address that will receive minting payments.
   private let creatorWalletAddress : Text = "";
-  /*cspell:enable*/
+  /* cspell:enable */
   
   private let rr = XorShift.toReader(XorShift.XorShift64(null));
 
@@ -95,6 +156,19 @@ shared ({caller = owner}) actor class CreatorNft() = this {
   private stable var _orderHistoryState : [(Text, TokenIndex)] = []; // (BlockId, TokenIndexPurchasedByBlockId)
   private var _orderHistory : HashMap.HashMap<Text, TokenIndex> = HashMap.fromIter(_orderHistoryState.vals(), 0, Text.equal, Text.hash);
 
+  private stable var _refundsState : [(Text, Text)] = []; // (PurchaseTransactionId, RefundTransactionId)
+  private var _refunds : HashMap.HashMap<Text, Text> = HashMap.fromIter(_refundsState.vals(), 0, Text.equal, Text.hash);
+  
+  private stable var _creatorState : [(Text, RawCreator)] = [];
+  private var _creatorMapper : HashMap.HashMap<Text, RawCreator> = HashMap.fromIter(_creatorState.vals(), 0, Text.equal, Text.hash);
+
+  private stable var _creatorPostState : [(Text, RawCreatorPost)] = [];
+  private var _creatorPostMapper : HashMap.HashMap<Text, RawCreatorPost> = HashMap.fromIter(_creatorPostState.vals(), 0, Text.equal, Text.hash);
+
+  private stable var _creatorCategoryState : [(Text, RawCreatorCategory)] = [];
+  private var _creatorCategoryMapper : HashMap.HashMap<Text, RawCreatorCategory> = HashMap.fromIter(_creatorCategoryState.vals(), 0, Text.equal, Text.hash);
+  
+
   private stable var _supply : Balance = 0;
   private stable var _nextTokenId : TokenIndex = 0;
 
@@ -105,14 +179,22 @@ shared ({caller = owner}) actor class CreatorNft() = this {
     _tokenMetadataState := Iter.toArray(_tokenMetadata.entries());
     _urlCountState := Iter.toArray(_urlCountMapper.entries());
     _orderHistoryState := Iter.toArray(_orderHistory.entries());
+    _refundsState := Iter.toArray(_refunds.entries());
     _pendingOrdersState := Iter.toArray(_pendingOrders.entries());
+    _creatorState := Iter.toArray(_creatorMapper.entries());
+    _creatorPostState := Iter.toArray(_creatorPostMapper.entries());
+    _creatorCategoryState := Iter.toArray(_creatorCategoryMapper.entries());
   };
   system func postupgrade() {
     _registryState := [];
     _tokenMetadataState := [];
     _urlCountState := [];
     _orderHistoryState := [];
+    _refundsState := [];
     _pendingOrdersState := [];
+    _creatorState := [];
+    _creatorPostState := [];
+    _creatorCategoryState := [];
   };
 
   /**
@@ -226,7 +308,7 @@ shared ({caller = owner}) actor class CreatorNft() = this {
   // Mints a new NFT.
   // Returns the token ID of the newly-minted NFT.
   public shared({caller}) func mintNFT(request : MintPaidRequest) : async TokenIndex {
-    //authorize(caller); // Uncomment if we need to freeze minting
+    // assertIsContentCreator(caller); // Uncomment if we need to freeze minting
     await validateTransaction(caller, request.ulid, request.blockId, request.amount); // validate block exists on ledger, transfer was sent to creator's AId, and has not been recorded to our orderHistory
 
     let receiver = ExtCore.User.toAID(request.to);
@@ -237,7 +319,7 @@ shared ({caller = owner}) actor class CreatorNft() = this {
     assert(request.metadata != null);
     var metadataText : Text = Option.unwrap(Text.decodeUtf8(Option.unwrap(request.metadata)));
     metadataText := Text.trimEnd(metadataText, #char '}');
-    metadataText #= ",\"borderId\":\"" # getTokenBorderId(token) # "\"}";
+    metadataText #= ",\"borderId\":\"" # getTokenBorderId() # "\"}";
 
     let md : Metadata = #nonfungible({
       metadata = ?Text.encodeUtf8(metadataText);
@@ -318,31 +400,135 @@ shared ({caller = owner}) actor class CreatorNft() = this {
     };
   };
 
+  private func validateRefund(purchaseBlockId : Nat64, refundBlockId : Nat64) : async () {
+    let purchaseBlock = await getBlock(purchaseBlockId);
+    let purchaseTransfer = purchaseBlock.transaction.transfer;
+    
+    let refundBlock = await getBlock(refundBlockId);
+    let refundTransfer = refundBlock.transaction.transfer;
+
+    switch(_orderHistory.get(Nat64.toText(purchaseBlockId))) {
+      case (?blockExists) {
+        assert(false); // Fail if block exists in _orderHistory
+      };
+      case (_) {
+        assert(true); // Pass if this is an unclaimed transaction
+      };
+    };
+
+    let refundArray = Iter.toArray(_refunds.entries());
+    switch(Array.find(refundArray, func ( (purchaseId, refundId) : (Text, Text)) : Bool { purchaseId == Nat64.toText(purchaseBlockId) or refundId == Nat64.toText(refundBlockId) })) {
+      case (?txId) {
+        assert(false); // either purchase has already been refunded, or refund has already been credited to a different transaction
+      };
+      case (_) {
+        assert(true); // no purchase nor refund found
+      };
+    };
+
+    switch(purchaseTransfer){
+      case (#Send(p)) {
+        switch(refundTransfer){
+          case (#Send(r)) {
+            assert(p.to == creatorWalletAddress); // confirm money went to creator's AccountId
+            assert(p.from == r.to); // confirm refund went to sender's AccountId
+            assert(p.amount == r.amount); // confirm purchase amount matches refund amount
+          };
+          case (_) {
+            assert(false);
+          };
+        };
+      };
+      case (_) { // Fail if someone sends us a Mint or Burn transfer
+        assert(false);
+      };
+    };
+  };
+
 
   /**
    * Backup/Restore functions
    */
   
   public shared({caller}) func backupCurrentState() : async () {
-    authorize(caller);
+    assertIsContentCreator(caller);
     await Backup.backupRegistry(await getRegistry());
     await Backup.backupTokenMetadata(await getTokens());
     await Backup.backupUrlCountMapper(await getUrlCountMapper());
     await Backup.backupPendingOrders(await getPendingOrders());
     await Backup.backupOrderHistory(await getOrderHistory());
+    await Backup.backupRefunds(await getRefunds());
+    await Backup.backupCreators(Iter.toArray(_creatorMapper.entries()));
+    await Backup.backupCreatorPosts(Iter.toArray(_creatorPostMapper.entries()));
+    await Backup.backupCreatorCategories(Iter.toArray(_creatorCategoryMapper.entries()));
 
     return;
   };
 
   public shared({caller}) func restoreState(versionsBack : Nat) : async () {
-    authorize(caller);
+    assertIsContentCreator(caller);
     _registry := HashMap.fromIter(Option.get((await Backup.restoreRegistry(?versionsBack)), []).vals(), 0, ExtCore.TokenIndex.equal, ExtCore.TokenIndex.hash);
     _tokenMetadata := HashMap.fromIter(Option.get((await Backup.restoreTokens(?versionsBack)), []).vals(), 0, ExtCore.TokenIndex.equal, ExtCore.TokenIndex.hash);
     _urlCountMapper := HashMap.fromIter(Option.get((await Backup.restoreURLCountMapper(?versionsBack)), []).vals(), 0, Text.equal, Text.hash);
     _pendingOrders := HashMap.fromIter(Option.get((await Backup.restorePendingOrders(?versionsBack)), []).vals(), 0, Principal.equal, Principal.hash);
     _orderHistory := HashMap.fromIter(Option.get((await Backup.restoreOrderHistory(?versionsBack)), []).vals(), 0, Text.equal, Text.hash);
+    _refunds := HashMap.fromIter(Option.get((await Backup.restoreRefunds(?versionsBack)), []).vals(), 0, Text.equal, Text.hash);
+    
+    _creatorMapper := HashMap.fromIter(Option.get((await Backup.restoreCreators(?versionsBack)), []).vals(), 0, Text.equal, Text.hash);
+    _creatorPostMapper := HashMap.fromIter(Option.get((await Backup.restoreCreatorPosts(?versionsBack)), []).vals(), 0, Text.equal, Text.hash);
+    _creatorCategoryMapper := HashMap.fromIter(Option.get((await Backup.restoreCreatorCategories(?versionsBack)), []).vals(), 0, Text.equal, Text.hash);
 
     return;
+  };
+
+  /**
+   * Refund functions
+   */
+  // given a transaction, method will return TRUE == ShouldRefund if transaction was sent to creator's account, does NOT exist in orderHistory AND transaction does NOT exist in refunds 
+  public shared({caller}) func shouldRefund(transactionId : Nat64) : async Bool {
+    assertIsContentCreator(caller);
+
+    let block = await getBlock(transactionId);
+    let transfer = block.transaction.transfer;
+
+    switch(transfer){
+      case (#Send(t)) {
+        assert(t.to == creatorWalletAddress); // confirm money went to creator's AccountId
+      };
+      case (_) { // Fail if someone sends us a Mint or Burn transfer
+        assert(false);
+        return false;
+      };
+    };
+
+    switch(_orderHistory.get(Nat64.toText(transactionId))) {
+      case (?blockExists) {
+        return false; // Fail if transaction exists in orderHistory
+      };
+      case (_) {
+        assert(true); // Pass if this is an unclaimed transaction
+      };
+    };
+
+    switch(_refunds.get(Nat64.toText(transactionId))) {
+      case (?blockExists) {
+        return false; // already refunded.  should not refund.
+      };
+      case (_) {
+      };
+    };
+
+    return true;
+  };
+
+  // once a refund has been completed, this method will be called to add the refund transaction Id to the refunds
+  public shared({caller}) func addToRefunds(purchaseTxId : Nat64, refundTxId : Nat64) : async Bool {
+    assertIsContentCreator(caller);
+    await validateRefund(purchaseTxId, refundTxId);
+
+    //_refunds : HashMap.HashMap<Text, Text>; // (PurchaseTransactionId, RefundTransactionId)    
+    _refunds.put(Nat64.toText(purchaseTxId), Nat64.toText(refundTxId));
+    return true;
   };
 
   /**
@@ -371,6 +557,10 @@ shared ({caller = owner}) actor class CreatorNft() = this {
 
   public query func getOrderHistory() : async [(Text, TokenIndex)] {
     Iter.toArray(_orderHistory.entries());
+  };
+
+  public query func getRefunds() : async [(Text, Text)] {
+    Iter.toArray(_refunds.entries());
   };
 
   public query func http_request(req: HttpHelper.HttpRequest): async (HttpHelper.HttpResponse) {
@@ -468,48 +658,48 @@ shared ({caller = owner}) actor class CreatorNft() = this {
     return response;
   };
  
-  public query func getUserNFTCount(user : User) : async Nat {
-    let size = internalGetUserNFTCount(user);
+  public query({caller}) func getUserNFTCount() : async Nat {
+    let size = internalGetUserNftCount(caller);
     Debug.print(debug_show("currentUserNFTCount", size));
     return size;
   };
   
-  public query func getUserNFTIndexes(user: User) : async [TokenIndex] {
-      return List.toArray(internalGetUserNFTIndexes(user));
+  public query({caller}) func getUserNFTIndexes() : async [TokenIndex] {
+      return List.toArray(listUserNFTs(caller));
   };
   
-  private func internalGetUserNFTCount(user : User) : Nat {
+  private func internalGetUserNftCount(principal : Principal) : Nat {
     let registry = Iter.toList(_registry.entries());
 
-    let accountIdentifier = ExtCore.User.toAID(user);
+    let accountIdentifier = AID.fromPrincipal(principal, null);
 
-    let currentUserNFTs : List.List<TokenIndex> = internalGetUserNFTIndexes(user);
+    let currentUserNFTs : List.List<TokenIndex> = listUserNFTs(principal);
     let size = List.size(currentUserNFTs);
     
     return size;
   };
   
-  private func internalGetUserNFTIndexes(user : User) : List.List<TokenIndex> {
+  private func listUserNFTs(principal : Principal) : List.List<TokenIndex> {
     let registry = Iter.toList(_registry.entries());
     
-    let accountIdentifier = ExtCore.User.toAID(user);
+    let accountIdentifier = AID.fromPrincipal(principal, null);
     
     let currentUserNFTs : List.List<TokenIndex> =
-        List.mapFilter(
-            registry,
-            func((tokenIndex, tokenAccountIdentifier): (TokenIndex, AccountIdentifier)) : ?TokenIndex {
-                if (tokenAccountIdentifier == accountIdentifier) {
-                    return ?tokenIndex;
-                } else {
-                    return null;
-                };
-            }
-        );
+      List.mapFilter(
+        registry,
+        func((tokenIndex, tokenAccountIdentifier): (TokenIndex, AccountIdentifier)) : ?TokenIndex {
+          if (tokenAccountIdentifier == accountIdentifier) {
+            return ?tokenIndex;
+          } else {
+            return null;
+          };
+        }
+      );
     
     return currentUserNFTs;
   };
 
-  private func getTokenBorderId(tokenIndex : TokenIndex) : Text {
+  private func getTokenBorderId() : Text {
     // Pseudo-random number generator for border selection
     let lfsrFeed = LFSR.LFSR8(null);
     // Number is Nat8, ranging 0–255
@@ -569,21 +759,180 @@ shared ({caller = owner}) actor class CreatorNft() = this {
         };
     };
   };
+  
+  public shared({caller}) func saveAllCreatorData(creatorData : RawBulkCreatorData) : async Bool {
+    assertIsContentCreator(caller);
+    // categories
+    let newCategoryMap : HashMap.HashMap<Text, RawCreatorCategory> = HashMap.fromIter(creatorData.categories.vals(), 0, Text.equal, Text.hash);
+    _creatorCategoryMapper := newCategoryMap;
+    // creators
+    let newCreatorMap : HashMap.HashMap<Text, RawCreator> = HashMap.fromIter(creatorData.creators.vals(), 0, Text.equal, Text.hash);
+    _creatorMapper := newCreatorMap;
+    // posts
+    let newCreatorPostMap : HashMap.HashMap<Text, RawCreatorPost> = HashMap.fromIter(creatorData.posts.vals(), 0, Text.equal, Text.hash);
+    _creatorPostMapper := newCreatorPostMap;
 
-  private func authorize(caller: Principal) : () {
-    /*cspell:disable*/
-    // TODO: add admin principal
-    let adminDfx = Principal.fromText("");
-    let anonymousPrincipal = Principal.fromText("2vxsx-fae");
-    /*cspell:enable*/
+    return true;
+  };
 
-    Debug.print("Authorizing caller..");
-    Debug.print(debug_show("caller", caller));
-    Debug.print(debug_show("authorized:", (caller == adminDfx or
-                                           //caller == anonymousPrincipal or // For debugging. Don't deploy this code uncommented.
-                                           caller == owner)));
-    assert(caller == adminDfx or
-           //caller == anonymousPrincipal or // For debugging. Don't deploy this code uncommented.
-           caller == owner);
-  }
+  public query({caller}) func getAllCreatorDataForCreator() : async RawBulkCreatorData {
+    assertIsContentCreator(caller);
+
+    return {
+      creators = Iter.toArray(_creatorMapper.entries());
+      posts = Iter.toArray(_creatorPostMapper.entries());
+      categories = Iter.toArray(_creatorCategoryMapper.entries());
+    };
+  };
+
+  public query({caller}) func getAllCreatorDataForUser() : async RawUserCreatorData {
+    // only show the initial creatorPost data to users in bulk
+    let posts : HashMap.HashMap<Text, RawInitialCreatorPostData> = 
+      HashMap.map<Text, RawCreatorPost, RawInitialCreatorPostData>(
+        _creatorPostMapper,
+        Text.equal,
+        Text.hash,
+        func ((id, entry) : (Text, RawCreatorPost)) : RawInitialCreatorPostData {
+          let initialData : RawInitialCreatorPostData = {
+            postLabel = entry.postLabel;
+            nftRequirement = entry.nftRequirement;
+            timestamp = entry.timestamp;
+
+            id = entry.id;
+            categoryId = entry.categoryId;
+            creatorId = entry.creatorId;
+          };
+
+          return initialData;
+        }
+      );
+
+    // don't show categories to users which they haven't met nft requirements for
+    let userNftCount = internalGetUserNftCount(caller);
+    let viewableCategories : HashMap.HashMap<Text, ?RawCreatorCategory> = 
+      HashMap.map<Text, RawCreatorCategory, ?RawCreatorCategory>(
+        _creatorCategoryMapper,
+        Text.equal,
+        Text.hash,
+        func ((id, entry) : (Text, RawCreatorCategory)) : ?RawCreatorCategory {
+          if (userNftCount < entry.nftRequirement) {
+            return null;
+          } else {
+            return ?entry;
+          }
+        }
+      );
+    let maybeNullCategories: [(Text, ?RawCreatorCategory)] = Iter.toArray(viewableCategories.entries());
+    let onlyValidCategories: [(Text, RawCreatorCategory)] = Array.mapFilter<(Text, ?RawCreatorCategory), (Text, RawCreatorCategory)>(
+        maybeNullCategories,
+        func((id, category): (Text, ?RawCreatorCategory)): ?(Text, RawCreatorCategory) {
+            switch (category) {
+                case (?validCategory) {
+                    return ?(id, validCategory);
+                };
+                case (null) {
+                    return null;
+                };
+            };
+        }
+    );
+
+    return {
+      creators = Iter.toArray(_creatorMapper.entries());
+      posts = Iter.toArray(posts.entries());
+      categories = onlyValidCategories;
+    };
+  };
+
+  public query({caller}) func tryToGetCreatorPostContent(postId : Text) : async ?Text {
+    let maybePost = _creatorPostMapper.get(postId);
+    switch(maybePost) {
+      case(?creatorPost) {
+        if (doesUserMeetNftRequirements(caller, creatorPost) or internalIsContentCreator(caller)) {
+          return ?creatorPost.content;
+        } else {
+          return null;
+        }
+      };
+      case (null) {
+        return null;
+      };
+    };
+  };
+
+  private func doesUserMeetNftRequirements(caller : Principal, creatorPost : RawCreatorPost) : Bool {
+    let userNftCount = internalGetUserNftCount(caller);
+    let enoughNfts = userNftCount >= creatorPost.nftRequirement;
+    Debug.print(debug_show("Enough NFTs?", userNftCount, creatorPost.nftRequirement, enoughNfts));
+    
+    return enoughNfts;
+  };
+  
+  // grants a free NFT to a content creator for testing purposes
+  public shared({caller}) func grantToSelf(request : SelfRequest) : async TokenIndex {
+    assertIsContentCreator(caller);
+
+    let receiver = AID.fromPrincipal(caller, null);
+    let token = _nextTokenId;
+
+    // Inject borderId into the metadata
+    // TODO figure out more robust JSON manipulation
+    assert(request.metadata != null);
+    var metadataText : Text = Option.unwrap(Text.decodeUtf8(Option.unwrap(request.metadata)));
+    metadataText := Text.trimEnd(metadataText, #char '}');
+    metadataText #= ",\"borderId\":\"" # getTokenBorderId() # "\"}";
+
+    let md : Metadata = #nonfungible({
+      metadata = ?Text.encodeUtf8(metadataText);
+    });
+    _registry.put(token, receiver);
+    _tokenMetadata.put(token, md);
+    let (standardizedUrl : Text, snippet : Text, borderId : Text, selectedFlair : Text) = getMetaDataElements(md);
+    
+    // don't add to URL counts
+    // let urlCount : Nat = Option.get(_urlCountMapper.get(standardizedUrl), 0) + 1;
+    // _urlCountMapper.put(standardizedUrl, urlCount);
+    
+    _supply += 1;
+    _nextTokenId += 1;
+    
+    return token;
+  };
+  
+  public query({caller}) func isContentCreator() : async Bool {
+    return internalIsContentCreator(caller);
+  };
+
+  /* cspell:disable */
+  // TODO: add creator principal
+  private let creatorPrincipal = Principal.fromText("2vxsx-fae");
+  /* cspell:enable */
+  private let creatorPrincipals : [Principal] = [
+    creatorPrincipal,
+    owner,
+  ];
+  private func internalIsContentCreator(caller : Principal): Bool {
+    let foundPrincipal = Array.find(
+      creatorPrincipals,
+      func (entry : Principal) : Bool {
+        return entry == caller;
+      }
+    );
+    let isCreator = switch (foundPrincipal) {
+      case (?foundPrincipal) {
+        true;
+      };
+      case (null) {
+        false;
+      };
+    };
+    
+    Debug.print(debug_show("Is content creator caller:", isCreator, caller));
+    
+    return isCreator;
+  };
+
+  private func assertIsContentCreator(caller: Principal) : () {
+    assert(internalIsContentCreator(caller));
+  };
 }

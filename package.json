@@ -12,17 +12,19 @@
     },
     "scripts": {
         "build": "cd frontend && npm run build",
+        "dev": "npm start",
         "dev:reset": "./scripts/reset-canisters.sh",
-        "format": "virmator format --no-write-config",
-        "spellcheck": "virmator spellcheck --no-write-config",
+        "format": "virmator format",
+        "spellcheck": "virmator spellcheck --extendable-config",
         "start": "./scripts/startup.sh",
         "test": "cd frontend && npm test",
         "test:full": "bash ./scripts/run-tests.sh"
     },
     "dependencies": {
-        "@dfinity/agent": "^0.10.2"
+        "@dfinity/agent": "0.10.4",
+        "augment-vir": "1.9.1"
     },
     "devDependencies": {
-        "virmator": "^1.3.7"
+        "virmator": "2.0.3"
     }
 }

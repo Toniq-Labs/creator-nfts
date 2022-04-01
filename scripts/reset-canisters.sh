@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+
+echo "sudo required for 'killall dfx'"
 sudo killall dfx;
 
 # wait for the killall to finish

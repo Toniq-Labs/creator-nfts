@@ -1,7 +1,6 @@
 /*
-    Regular font:
-    M Plus 1P filtered to the ✓, ×, and ✔ characters
-    obtained from https://fonts.googleapis.com/css2?family=M+PLUS+1p:wght@400;800&text=✓;×;✔
+    M Plus 1P filtered to specific characters
+    obtained from https://fonts.googleapis.com/css2?family=M+PLUS+1p:wght@400;800&text=✓;×;✔;+;-;˅;▼;▲;˄
 */
 
 /* 
@@ -98,7 +97,7 @@ FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
 */
 
-/* check mark (✓),  multiplication sign (×), and heavy check mark (✔) symbols only */
+/* specific symbols only (see URL at top of file for listed characters) */
 @font-face {
     font-family: 'M PLUS 1p';
     font-style: normal;

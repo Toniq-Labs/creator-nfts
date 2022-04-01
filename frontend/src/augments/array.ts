@@ -21,3 +21,28 @@ export function toUint8Array(input: Readonly<number[] | Uint8Array | string[]>):
         throw new Error(`Invalid array input: ${input.join(',')}`);
     }
 }
+
+/** Caution: this mutates! */
+export function moveIndex(array: any[], oldIndex: number, newIndex: number): void {
+    array.splice(newIndex, 0, array.splice(oldIndex, 1)[0]);
+}
+
+export function sortWithNullables<T>(
+    fullSort: (a: NonNullable<T>, b: NonNullable<T>) => number,
+    undefinedAtStart = false,
+): (a: T, b: T) => number {
+    return (a, b) => {
+        {
+            if (a !== undefined && b != undefined) {
+                return fullSort(a!, b!);
+            } else if (!a && !b) {
+                return 0;
+            } else if (!a) {
+                return undefinedAtStart ? 1 : -1;
+            } else {
+                // this is the !b situation
+                return undefinedAtStart ? -1 : 1;
+            }
+        }
+    };
+}

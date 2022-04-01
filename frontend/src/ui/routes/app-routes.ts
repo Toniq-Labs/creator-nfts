@@ -12,7 +12,12 @@ export type ValidTcnftRoutes =
           TcnftAppTopLevelRoute.Home,
           // category id
           string,
-          // content id
+          // post id
+          string,
+      ]
+    | [
+          TcnftAppTopLevelRoute.Creator,
+          // post id
           string,
       ];
 
@@ -21,6 +26,46 @@ export type ValidTcnftSearch = Partial<Record<TcnftAppSearchParamKeys, string>> 
 export enum TcnftAppTopLevelRoute {
     About = 'about',
     Home = 'home',
+    Creator = 'creator',
+}
+
+export function getWindowTitle(route: TcnftAppFullRoute | undefined): string {
+    if (!route) {
+        return '';
+    }
+
+    if (route.search) {
+        if (
+            route.search[TcnftAppSearchParamKeys.Mint] ||
+            route.search[TcnftAppSearchParamKeys.MintUrl] ||
+            route.search[TcnftAppSearchParamKeys.MintFlair]
+        ) {
+            return 'Mint';
+        }
+
+        if (
+            route.search[TcnftAppSearchParamKeys.BrowseNftSearch] ||
+            route.search[TcnftAppSearchParamKeys.BrowseNftPage]
+        ) {
+            return 'My NFTs';
+        }
+    }
+
+    if (route.paths.length) {
+        switch (route.paths[0]) {
+            case TcnftAppTopLevelRoute.About: {
+                return 'About';
+            }
+            case TcnftAppTopLevelRoute.Home: {
+                return 'Home';
+            }
+            case TcnftAppTopLevelRoute.Creator: {
+                return 'Creator Dashboard';
+            }
+        }
+    }
+
+    return '';
 }
 
 /**
@@ -31,11 +76,17 @@ export enum TcnftAppTopLevelRoute {
  * back to what they were viewing previously.
  */
 export enum TcnftAppSearchParamKeys {
+    HomeSearch = 'search',
+    HomeBrowsePage = 'page',
+
     Mint = 'mint',
     MintUrl = 'mint-url',
     MintFlair = 'mint-flair',
 
-    BrowseNftPage = 'browse-nft',
+    BrowseNftSearch = 'nft-search',
+    BrowseNftPage = 'nft-page',
+
+    EditJson = 'edit-json',
 }
 
 export type TcnftAppFullRoute = Required<

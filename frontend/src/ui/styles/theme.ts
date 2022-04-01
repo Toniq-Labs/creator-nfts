@@ -1,6 +1,6 @@
 import {Theme, ThemeAuto} from '@frontend/src/data/theme';
 import {readLocalStorageValue} from '@frontend/src/local-storage/local-storage';
-import {LocalStorageKey} from '@frontend/src/local-storage/local-storage-keys';
+import {StaticLocalStorageKey} from '@frontend/src/local-storage/local-storage-keys';
 import {
     themeBodyOverScrollColorName,
     themeDarkForegroundColorName,
@@ -14,7 +14,16 @@ import {CSSResult, unsafeCSS} from 'lit';
 export const themeEffectsEnabledClassName = 'tcnft-root-effects-enabled';
 
 /** In an array so we can guarantee ordering */
-export const allThemes = [Theme.light, Theme.dark] as const;
+export const allThemes = [
+    Theme.light,
+    Theme.dark,
+] as const;
+
+export const themeLabelMapping: Record<Theme | ThemeAuto, string> = {
+    [Theme.light]: 'Light',
+    [Theme.dark]: 'Dark',
+    [ThemeAuto]: 'Auto',
+};
 
 function getThemeIndex(theme: Theme): number {
     return allThemes.indexOf(theme);
@@ -72,7 +81,7 @@ function getAutoThemePreference(): Theme {
 }
 
 export function getLastUsedTheme(): Theme | ThemeAuto | undefined {
-    return readLocalStorageValue(LocalStorageKey.lastManuallyChosenTheme);
+    return readLocalStorageValue(StaticLocalStorageKey.lastManuallyChosenTheme);
 }
 
 export const foregroundColorNameByTheme: Record<Theme, string> = {

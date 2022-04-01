@@ -1,4 +1,3 @@
-import {UnlockProgress} from '@frontend/src/data/creator-content';
 import {defineCreatorNftElement} from '@frontend/src/ui/define-element/define-creator-nft-element';
 import {
     monospaceFontVar,
@@ -8,6 +7,11 @@ import {
     themeBackgroundColorVar,
 } from '@frontend/src/ui/styles/theme-vars';
 import {css, html} from 'element-vir';
+
+export type UnlockProgress = {
+    current: number;
+    required: number;
+};
 
 export const ProgressTracker = defineCreatorNftElement({
     tagName: 'tcnft-progress-tracker',

@@ -38,8 +38,8 @@ export const CoreButton = defineCreatorNftElement({
             font-weight: bold;
             text-decoration: inherit;
             ${themeColorTransitions};
-            max-width: 100%;
             transition-duration: ${themeInteractionTransitionTimeVar};
+            max-width: 100%;
             flex-shrink: 0;
         }
 
@@ -125,6 +125,9 @@ export const CoreButton = defineCreatorNftElement({
 
         :host(.tcnft-core-button-text-button) {
             color: ${themeForegroundColorVar};
+        }
+        :host(.tcnft-core-button-text-button-primary-accent) {
+            color: ${themeForegroundPrimaryAccentColorVar};
         }
 
         :host(.tcnft-core-button-text-button) span {
@@ -228,6 +231,7 @@ export const CoreButton = defineCreatorNftElement({
         }
 
         :host(.tcnft-core-button-not-clickable) {
+            opacity: ${overlayActiveOpacityVar};
             pointer-events: none;
         }
     `,
@@ -244,7 +248,12 @@ export const CoreButton = defineCreatorNftElement({
                 tabindex=${props.clickable ? '0' : '-1'}
             >
                 <span>
-                    ${props.label}
+                    ${
+                        props.label ||
+                        html`
+                            &nbsp;
+                        `
+                    }
                 <span>
             </button>
             <div class="focus-border"></div>

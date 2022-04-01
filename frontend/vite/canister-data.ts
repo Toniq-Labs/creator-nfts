@@ -12,7 +12,11 @@ type CanisterIds = Record<string, CanisterIdDefinition> & {__CANDID_UI: Canister
 
 // Generate canister ids, required by the generated canister code in .dfx/local/canisters/*
 export function getCanisterDefinitions(isDev: boolean) {
-    console.info(`Using ${isDev ? 'dev' : 'prod'} config.`);
+    if (isDev) {
+        console.info('Using dev config.');
+    } else {
+        console.info('Using prod config.');
+    }
     const canisterIdsPath = isDev
         ? join(dfxDir, 'local', canisterIdsFileName)
         : join(__dirname, '..', '..', canisterIdsFileName);
@@ -34,24 +38,33 @@ export function getCanisterDefinitions(isDev: boolean) {
         );
     }
 
-    return Object.entries(canisterIds).reduce((accum, [key, idDefinition]) => {
-        const processKeyName = `process.env.${key.toUpperCase()}_CANISTER_ID`;
-        const idProperty: keyof CanisterIdDefinition = isDev ? 'local' : 'ic';
-        const canisterId = idDefinition[idProperty];
+    return Object.entries(canisterIds).reduce(
+        (
+            accum,
+            [
+                key,
+                idDefinition,
+            ],
+        ) => {
+            const processKeyName = `process.env.${key.toUpperCase()}_CANISTER_ID`;
+            const idProperty: keyof CanisterIdDefinition = isDev ? 'local' : 'ic';
+            const canisterId = idDefinition[idProperty];
 
-        if (!canisterId) {
-            throw new Error(
-                `Tried to access "${idProperty}" canister id because isDev=${isDev} but "${idProperty}" was undefined in ${JSON.stringify(
-                    idDefinition,
-                )}`,
-            );
-        }
+            if (!canisterId) {
+                throw new Error(
+                    `Tried to access "${idProperty}" canister id because isDev=${isDev} but "${idProperty}" was undefined in ${JSON.stringify(
+                        idDefinition,
+                    )}`,
+                );
+            }
 
-        console.info(processKeyName, canisterId);
-        return {
-            ...accum,
-            // JSON.stringify used here to wrap the string in quotes in order to appease vite
-            [processKeyName]: JSON.stringify(canisterId),
-        };
-    }, {});
+            console.info(processKeyName, canisterId);
+            return {
+                ...accum,
+                // JSON.stringify used here to wrap the string in quotes in order to appease vite
+                [processKeyName]: JSON.stringify(canisterId),
+            };
+        },
+        {},
+    );
 }

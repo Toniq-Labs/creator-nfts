@@ -8,6 +8,7 @@ import {getObjectTypedKeys} from 'augment-vir';
 export enum ModalName {
     Mint = 'mint',
     BrowseNft = 'browse-nft',
+    EditJson = 'edit-json',
 }
 
 const modalRouteSearchKeys: Readonly<Record<ModalName, Readonly<TcnftAppSearchParamKeys[]>>> = {
@@ -16,7 +17,11 @@ const modalRouteSearchKeys: Readonly<Record<ModalName, Readonly<TcnftAppSearchPa
         TcnftAppSearchParamKeys.MintUrl,
         TcnftAppSearchParamKeys.MintFlair,
     ],
-    [ModalName.BrowseNft]: [TcnftAppSearchParamKeys.BrowseNftPage],
+    [ModalName.BrowseNft]: [
+        TcnftAppSearchParamKeys.BrowseNftPage,
+        TcnftAppSearchParamKeys.BrowseNftSearch,
+    ],
+    [ModalName.EditJson]: [TcnftAppSearchParamKeys.EditJson],
 } as const;
 
 export function clearAllModalsFromRoute(
@@ -29,7 +34,7 @@ export function clearAllModalsFromRoute(
         modalRouteSearchKeys,
     ).reduce((accum: NonNullable<ValidTcnftSearch>, modalName) => {
         modalRouteSearchKeys[modalName].forEach((searchKey) => {
-            accum[searchKey] = '';
+            accum[searchKey] = undefined;
         });
         return accum;
     }, {});
@@ -46,7 +51,9 @@ export function getCurrentModalKey(currentRoute?: TcnftAppFullRoute): undefined 
     }
 
     const currentModalName = getObjectTypedKeys(modalRouteSearchKeys).find((modalName) =>
-        modalRouteSearchKeys[modalName].some((searchKey) => !!currentRoute?.search?.[searchKey]),
+        modalRouteSearchKeys[modalName].some(
+            (searchKey) => currentRoute?.search?.[searchKey] != undefined,
+        ),
     );
 
     if (!currentModalName) {

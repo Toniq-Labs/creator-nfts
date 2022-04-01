@@ -2,13 +2,14 @@ import {Theme} from '@frontend/src/data/theme';
 import {defineCreatorNftElement} from '@frontend/src/ui/define-element/define-creator-nft-element';
 import {ToniqLabsLogo} from '@frontend/src/ui/elements/design-system/creator-nfts-logo.element';
 import {RouteLink} from '@frontend/src/ui/elements/design-system/route-link.element';
-import {StartSignInEvent} from '@frontend/src/ui/global-events/start-sign-in';
+import {LoadingIndicator} from '@frontend/src/ui/elements/loading/loading-indicator.element';
+import {StartSignInEvent} from '@frontend/src/ui/global-events/start-sign-in.event';
 import {emptyRoute} from '@frontend/src/ui/routes/app-router';
 import {TcnftAppFullRoute, TcnftAppTopLevelRoute} from '@frontend/src/ui/routes/app-routes';
 import {foregroundColorNameByTheme} from '@frontend/src/ui/styles/theme';
 import {getObjectTypedKeys} from 'augment-vir';
 import {assign, css, html, onDomCreated} from 'element-vir';
-import {monospaceFontVar} from '../../styles/theme-vars';
+import {monospaceFontVar, themeErrorColorVar} from '../../styles/theme-vars';
 import {CoreButton} from '../design-system/core-button.element';
 
 const twitterThemeMap: Record<Theme, string> = {
@@ -24,15 +25,20 @@ export const AboutPage = defineCreatorNftElement({
         currentRoute: undefined as TcnftAppFullRoute | undefined,
         twitterThemeToTcnftTextColor: undefined as Record<string, string> | undefined,
         phrases: {
-            signIn: 'Sign In',
-            title: 'Creator NFTs',
-            subtitle: 'by Toniq Labs',
-            skipToContent: 'Skip to Content',
-            mintHelp: 'Click on the green "Mint" button in the top-right to mint an NFT!',
             contentHelp:
-                "Once you've minted at least 1 NFT, your default home page here will be the content page, which you can skip to right now using the button below:",
+                "Once you've minted at least 1 NFT, your default home page here will be the creator posts, which you can skip to right now using the button below:",
+            loading: 'Connecting to Stoic Wallet...',
+            authLoadingError: 'Failed to connect to Stoic Wallet. Try signing in again.',
+            mintHelp: 'Click on the green "Mint" button in the top-right to mint an NFT!',
+            signIn: 'Sign In',
+            skipToContent: 'Skip to Creator Posts',
+            waitingForStoic: 'Waiting for Stoic Wallet authorization...',
+            stoicRejected: 'Stoic Wallet authorization was rejected.',
         },
         isSignedIn: false,
+        waitingForStoic: false,
+        isLoadingLogin: true,
+        userLoadFailure: '',
     },
     styles: css`
         :host {
@@ -48,42 +54,15 @@ export const AboutPage = defineCreatorNftElement({
             flex-direction: column;
             justify-content: flex-start;
             align-items: center;
-            gap: 40px;
+            gap: 64px;
         }
         
         article > * {
             max-width: 100%;
         }
-        
-        .logged-in-title {
-            margin-top: 3em;
-        }
-        
-        .title a {
-            color: unset;
-            text-decoration: unset;
-        }
-        
-        .title {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            text-align: center;
-        }
-        
-        .logged-in-title ${ToniqLabsLogo} {
-            display: none;
-        }
 
         ${ToniqLabsLogo} {
             max-width: 100px;
-        }
-        
-        h1 {
-            margin: 0;
-            margin-top: 8px;
-            padding: 0;
-            font-size: 2em;
         }
 
         iframe {
@@ -100,6 +79,7 @@ export const AboutPage = defineCreatorNftElement({
             width: 600px;
             max-width: 100%;
             text-align: center;
+            margin-top: 3em;
             padding: 0 1em;
             box-sizing: border-box;
         }
@@ -126,7 +106,7 @@ export const AboutPage = defineCreatorNftElement({
             left: 0;
         }
 
-        iframe.hidden {
+        .hidden {
             display: none;
         }
 
@@ -140,6 +120,21 @@ export const AboutPage = defineCreatorNftElement({
             padding: 0;
             text-align: center;
             font-family ${monospaceFontVar};
+        }
+        
+        ${LoadingIndicator} {
+            position: relative;
+        }
+        
+        .error {
+            color: ${themeErrorColorVar};
+            font-weight: bold;
+        }
+        
+        .stoic-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
     `,
     renderCallback: ({props, genericDispatch}) => {
@@ -181,20 +176,17 @@ export const AboutPage = defineCreatorNftElement({
             }
         }
 
+        const stoicRejected = props.userLoadFailure.toLowerCase().includes('rejected');
+        const isLoading = props.isLoadingLogin && !props.userLoadFailure;
+
         return html`
             <article
                 ${onDomCreated((element) => {
                     setThemeColors(element);
                 })}
             >
-                <div class="title ${props.isSignedIn ? 'logged-in-title' : ''}">
-                    <${ToniqLabsLogo}></${ToniqLabsLogo}>
-                    <h1>${props.phrases.title}</h1>
-                    <a href="https://toniqlabs.com">${props.phrases.subtitle}</a>
-                </div>
-                ${
-                    props.isSignedIn
-                        ? html`
+                ${props.isSignedIn
+                    ? html`
                         <section class="logged-in-content">
                             <p>
                                 ${props.phrases.mintHelp}
@@ -215,20 +207,49 @@ export const AboutPage = defineCreatorNftElement({
                             </${RouteLink}>
                         </section>
                     `
-                        : html`       
-                            <div>
-                                <${CoreButton}
-                                    class="tcnft-core-button-accept-theme tcnft-core-button-shine sign-in-button"
-                                    ${assign(CoreButton.props.label, props.phrases.signIn)}
-                                    @click=${() => genericDispatch(new StartSignInEvent())}
-                                ></${CoreButton}>
-                                <p class="sign-in-explanation">
-                                    Using Stoic Wallet
-                                </p>
-                            </div>
-                        `
-                }
-                <div class="tweet-wrapper">
+                    : html`
+                        <${ToniqLabsLogo}></${ToniqLabsLogo}>
+                        <div class="stoic-wrapper">
+                            ${
+                                isLoading || props.waitingForStoic
+                                    ? html`
+                                        <${LoadingIndicator}
+                                            ${assign(LoadingIndicator.props.isLoading, true)}
+                                            ${assign(
+                                                LoadingIndicator.props.label,
+                                                props.waitingForStoic
+                                                    ? props.phrases.waitingForStoic
+                                                    : props.phrases.loading,
+                                            )}
+                                        ></${LoadingIndicator}>
+                                    `
+                                    : html`
+                                        <p class="error ${props.userLoadFailure ? '' : 'hidden'}">
+                                            ${
+                                                stoicRejected
+                                                    ? props.phrases.stoicRejected
+                                                    : props.phrases.authLoadingError
+                                            }
+                                        </p>
+                                        <${CoreButton}
+                                            class="
+                                                tcnft-core-button-accept-theme
+                                                tcnft-core-button-shine
+                                                sign-in-button
+                                            "
+                                            ${assign(CoreButton.props.label, props.phrases.signIn)}
+                                            @click=${() => {
+                                                genericDispatch(new StartSignInEvent());
+                                            }}
+                                        ></${CoreButton}>
+                                        <p class="sign-in-explanation">
+                                            Using Stoic Wallet
+                                        </p>
+                                    `
+                            }
+                        </div>
+                    `}
+                <div class="tweet-wrapper ${isLoading ? 'hidden' : ''}">
                     ${twitterThemes.map(
                         (twitterTheme) => html`
                             <iframe

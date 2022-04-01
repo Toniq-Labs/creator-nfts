@@ -10,9 +10,10 @@ export function standardizeUrl(originalUrl: string): string {
         : `http://${originalUrl}`;
     const url = new URL(originalWithProtocol);
 
-    // If we have content sites that are legit www-only, reconsider this
-    const host = url.host.replace(/^www\./i, '').replace(/:(80|443)$/, '');
-    const pathname = url.pathname.replace(/\/$/, '');
+    const originalHash = url.hash.trim();
+    const hash = originalHash.length > 1 ? originalHash : '';
+    const host = url.host.replace(/:(80|443)$/, '');
+    const pathname = hash ? url.pathname : url.pathname.replace(/\/$/, '');
 
-    return `${host}${pathname}`.trim();
+    return `${host}${pathname}${hash}`.trim();
 }

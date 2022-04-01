@@ -20,6 +20,7 @@ Template for a cross-platform community hub that supports creators and allows th
 5.  Add your own NFT borders as base64 encoded strings in [`canisters/nft/imageAssets.mo`](./canisters/nft/imageAssets.mo).
 6.  Fill in `ledgerC` in [`canisters/nft/main.mo`](./canisters/nft/main.mo) with the principal of a deployed instance of [this Ledger canister](https://github.com/aviate-labs/icp-canister/blob/main/src/ledger/main.rs).
 7.  After deploying your NFT canister, add its principal to `nftCanister` in [`canisters/backup/main.mo`](./canisters/backup/main.mo).
+8.  Remove the `backupUserBrowseData` usage in [`frontend/src/ui/elements/root-app.element.ts`](./frontend/src/ui/elements/root-app.element.ts) (marked by a TODO comment). Replace it with `undefined`.
 
 All of these are marked to `TODO:` in the code so you can easily track down items you haven't finished yet.
 

@@ -13,7 +13,7 @@ function mapToActualPaths(paths: Readonly<string[]>): Readonly<string[]> {
     return paths.reduce((accum, path) => {
         if (existsSync(path)) {
             if (lstatSync(path).isSymbolicLink()) {
-                console.log('reading symlink from', path);
+                console.info('reading symlink from', path);
                 // sym links AND the original path both need to be included
                 return accum.concat(readlinkSync(path), path);
             } else {
@@ -50,7 +50,7 @@ export function alwaysReloadPlugin(
                 if (!loggedAlready) {
                     loggedAlready = true;
                     // log watched stuff so that we can make sure it's not watching too much
-                    // console.log({watched: watcher.getWatched()});
+                    // console.info({watched: watcher.getWatched()});
                 }
                 // prevent duplicate calls cause the watcher is very eager to call callbacks multiple times in a row
                 if (!callingAlready) {
@@ -63,7 +63,10 @@ export function alwaysReloadPlugin(
                         `${chalk.green('page reload')} ${chalk.dim(relative(root, path))}`,
                         {clear: true, timestamp: true},
                     );
-                    /** Debounce reloads calls so that they don't get spammed. */
+                    /**
+                     * Debounce reloads calls so that they don't get spammed. If you're saving
+                     * faster than this, then what the heck are you doing anyway?
+                     */
                     setTimeout(() => {
                         callingAlready = false;
                     }, 100);
@@ -72,9 +75,9 @@ export function alwaysReloadPlugin(
 
             if (exclusions.length) {
                 watcher.unwatch(mapToActualPaths(exclusions));
+                // ignore macOS file system metadata stuff
+                watcher.unwatch('./**/.DS_Store');
             }
-            // ignore macOS file system metadata stuff
-            watcher.unwatch('./**/.DS_Store');
             if (inclusions.length) {
                 watcher.add(inclusions);
             }

@@ -1,7 +1,8 @@
 import {Principal} from '@dfinity/principal';
 import {StoicIdentity} from '@frontend/src/auth/stoic-id-shim';
 import {createLedgerActor, LedgerActor} from '@frontend/src/canisters/ledger';
-import {createNftActor, NftActor} from '@frontend/src/canisters/nft-canister';
+import {createNftActor, NftActor} from '@frontend/src/canisters/nft/nft-actor';
+import {getUserNftIds, isContentCreator} from '@frontend/src/canisters/nft/user-data';
 
 export type NftUser = {
     /** Used for interactions with canisters. */
@@ -9,10 +10,8 @@ export type NftUser = {
     stoicIdentity: StoicIdentity;
     nftActor: NftActor;
     ledgerActor: LedgerActor;
-};
-
-export type NftUserWithNftList = NftUser & {
     nftIdList: number[];
+    isContentCreator: boolean;
 };
 
 export const UnloadedUserId = {notLoadedYet: true} as const;
@@ -29,12 +28,19 @@ export function isNftUserLoaded<UserGeneric extends NftUser = NftUser>(
 }
 
 export async function stoicIdentityToNftUser(stoicIdentity: StoicIdentity): Promise<NftUser> {
-    return {
-        principal: stoicIdentity.getPrincipal(),
-        stoicIdentity: stoicIdentity,
-        nftActor: await createNftActor(stoicIdentity),
+    const nftActor = await createNftActor(stoicIdentity);
+    const principal = stoicIdentity.getPrincipal();
+
+    const nftUser: NftUser = {
+        principal,
+        stoicIdentity,
+        nftActor,
         ledgerActor: await createLedgerActor(stoicIdentity),
+        nftIdList: await getUserNftIds(nftActor),
+        isContentCreator: await isContentCreator(nftActor),
     };
+
+    return nftUser;
 }
 
 export function getDisplayUsername(userId: MaybeNotLoadedUserId | undefined): string {

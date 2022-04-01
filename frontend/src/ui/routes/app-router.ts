@@ -1,4 +1,5 @@
 import {
+    getWindowTitle,
     TcnftAppFullRoute,
     TcnftAppSearchParamKeys,
     TcnftAppTopLevelRoute,
@@ -44,13 +45,17 @@ export const tcnftAppRouter = createSpaRouter<ValidTcnftRoutes, ValidTcnftSearch
             // sub paths are only allowed on the home page
             if (sanitizedPaths[0] === TcnftAppTopLevelRoute.Home) {
                 // there are only two allowed sub paths so far (category id and content id)
-                for (let i = 0; i < 2; i++) {
-                    const pathIndex = i + 1;
+                for (let pathIndex = 1; pathIndex <= 2; pathIndex++) {
                     const currentPath = fullRoute.paths[pathIndex];
 
                     if (currentPath) {
                         sanitizedPaths[pathIndex] = currentPath;
                     }
+                }
+            } else if (sanitizedPaths[0] === TcnftAppTopLevelRoute.Creator) {
+                const currentlyEditingPost = fullRoute.paths[1];
+                if (currentlyEditingPost) {
+                    sanitizedPaths[1] = currentlyEditingPost;
                 }
             }
         }
@@ -74,7 +79,13 @@ export const tcnftAppRouter = createSpaRouter<ValidTcnftRoutes, ValidTcnftSearch
             });
         }
 
-        return {paths: sanitizedPaths, search: sanitizedSearch, hash: undefined};
+        const sanitizedRoute = {paths: sanitizedPaths, search: sanitizedSearch, hash: undefined};
+
+        const pageTitle = getWindowTitle(sanitizedRoute);
+        if (pageTitle) {
+            window.document.title = `Creator NFTs - ${pageTitle}`;
+        }
+        return sanitizedRoute;
     },
     maxListenerCount: 1,
 });

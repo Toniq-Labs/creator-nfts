@@ -7,8 +7,6 @@ export const RootLoader = defineCreatorNftElement({
     props: {
         root: undefined as undefined | HTMLElement,
         domLoaded: false,
-        /** Also watch external loading conditions, like loading the user auth data. */
-        externalLoaded: false,
     },
     styles: css`
         :host {
@@ -20,8 +18,7 @@ export const RootLoader = defineCreatorNftElement({
         if (
             props.domLoaded &&
             props.root &&
-            !props.root.classList.contains(themeEffectsEnabledClassName) &&
-            props.externalLoaded
+            !props.root.classList.contains(themeEffectsEnabledClassName)
         ) {
             setTimeout(() => {
                 requestAnimationFrame(() => {

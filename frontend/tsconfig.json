@@ -9,7 +9,11 @@
         "exactOptionalPropertyTypes": true,
         "forceConsistentCasingInFileNames": true,
         "isolatedModules": true,
-        "lib": ["DOM", "DOM.Iterable", "ESNext"],
+        "lib": [
+            "DOM",
+            "DOM.Iterable",
+            "ESNext"
+        ],
         "module": "ESNext",
         "moduleResolution": "Node",
         "noEmit": true,
@@ -29,5 +33,9 @@
         "target": "ESNext",
         "useUnknownInCatchVariables": true
     },
-    "include": ["./src/", "./vite/"]
+    "exclude": ["src/ui/elements/old-elements"],
+    "include": [
+        "./src/",
+        "./vite/"
+    ]
 }

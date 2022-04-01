@@ -1,6 +1,7 @@
-import {MaybeNotLoadedUserId} from '@frontend/src/data/nft-user';
+import {isNftUserLoaded, MaybeNotLoadedUserId} from '@frontend/src/data/nft-user';
 import {defineCreatorNftElement} from '@frontend/src/ui/define-element/define-creator-nft-element';
 import {
+    defaultLoggedInHaveNftsRoute,
     defaultLoggedInNoNftsRoute,
     defaultNotLoggedInRoute,
     TcnftAppRouteListener,
@@ -39,6 +40,7 @@ export const TcnftAppNav = defineCreatorNftElement({
         ) {
             props.router.setRoutes(props.currentFullRoute.route, props.currentFullRoute.replace);
         }
+
         // if no user is signed in, kick them to the about page
         if (
             !props.currentUser &&
@@ -46,18 +48,23 @@ export const TcnftAppNav = defineCreatorNftElement({
         ) {
             props.router.setRoutes(defaultNotLoggedInRoute, true);
         }
-        // if a user is signed in and there are no current routes, kick them to the default one
 
-        // if no user is signed in, kick them to the about page
+        // if a user is signed in and there are no current routes, kick them to the default one
         if (
-            props.currentUser &&
-            !('notLoadedYet' in props.currentUser) &&
-            !props.router.getCurrentRawRoutes().paths.length
+            isNftUserLoaded(props.currentUser) &&
+            // wait for routing to finish loading first
+            props.currentFullRoute &&
+            // when we're on the default "/" path
+            !props.currentFullRoute.route?.paths.length
         ) {
+            const newRoute = props.currentUser.nftIdList.length
+                ? defaultLoggedInHaveNftsRoute
+                : defaultLoggedInNoNftsRoute;
+
             props.router.setRoutes(
                 {
-                    search: props.router.getCurrentRawRoutes().search,
-                    paths: defaultLoggedInNoNftsRoute.paths,
+                    ...props.currentFullRoute?.route,
+                    ...newRoute,
                 },
                 true,
             );
